@@ -12,6 +12,7 @@ from webike.util.DB import default_credentials
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
 
+from analyse import FW3I_VALUES, FW3I_FOLDER
 from util.SafeFileWalker import SafeFileWalker
 
 CHECKPOINT_FILE = "checkpoint.pickle"
@@ -45,50 +46,56 @@ def main():
         iterator = pickle.load(open(CHECKPOINT_FILE, "rb"))
     else:
         iterator = SafeFileWalker(root)
+        client.delete_series(measurement='samples')
 
     for file in progress(iterator):
-        m = re.search('Participant ([0-9]{2}b?)', file)
-        participant = m.group(1)
-        if participant == "10b":
-            participant = 11
-        else:
-            participant = int(participant)
+        try:
+            m = re.search('Participant ([0-9]{2}b?)', file)
+            participant = m.group(1)
+            if participant == "10b":
+                participant = 11
+            else:
+                participant = int(participant)
 
-        with open(file, 'rt', newline='') as f:
-            reader = csv.reader(f)
+            with open(file, 'rt', newline='') as f:
+                reader = csv.reader(f)
 
-            header = next(reader)
-            if "Trip" in header:
-                logger.warning(__("Skipping trip file {}", file))
-                return
-            assert header[0] == "Timestamp", "Illegal header row {}".format(header)
-            header[0] = "reltime"
-            regex = re.compile(r"\[.*\]$")
-            header = [regex.sub("", h.lower()) for h in header]
+                header = next(reader)
+                if "Trip" in header:
+                    logger.warning(__("Skipping trip file {}", file))
+                    return
+                assert header[0] == "Timestamp", "Illegal header row {}".format(header)
+                header[0] = "reltime"
+                regex = re.compile(r"\[.*\]$")
+                header = [regex.sub("", h.lower()) for h in header]
 
-            infos = next(reader)
-            assert len(infos) == 3, "Illegal info row {}".format(infos)
-            assert len(infos[2]) == 0, "Illegal info row {}".format(infos)
-            base_time = datetime.strptime(infos[0], "%m/%d/%Y %I:%M:%S %p")
-            car_id = infos[1]
+                infos = next(reader)
+                assert len(infos) == 3, "Illegal info row {}".format(infos)
+                assert len(infos[2]) == 0 or (infos[2] in FW3I_VALUES and file.startswith(FW3I_FOLDER)), \
+                    "Illegal info row {}".format(infos)
+                base_time = datetime.strptime(infos[0], "%m/%d/%Y %I:%M:%S %p")
+                car_id = infos[1]
 
-            rows = [{
-                        'measurement': 'samples',
-                        'time': base_time + timedelta(milliseconds=int(row[0])),
-                        'tags': {
-                            'participant': participant,
-                            'base_time': base_time,
-                            'car_id': car_id,
-                            'source': file
-                        },
-                        'fields': dict([(k, float(v)) for k, v in zip(header, row) if k in COLS])
-                    } for row in reader]
-            rows = peekable(rows)
+                rows = [{
+                            'measurement': 'samples',
+                            'time': base_time + timedelta(milliseconds=int(row[0])),
+                            'tags': {
+                                'participant': participant,
+                                'base_time': base_time,
+                                'car_id': car_id,
+                                'source': file
+                            },
+                            'fields': dict([(k, float(v)) for k, v in zip(header, row) if k in COLS])
+                        } for row in reader]
+                rows = peekable(rows)
 
-            if rows.peek(None):
-                # pickle.dump(iterator, open(CHECKPOINT_COPY_FILE, "wb"))
-                client.write_points(rows)
-                # os.replace(CHECKPOINT_COPY_FILE, CHECKPOINT_FILE)
+                if rows.peek(None):
+                    # pickle.dump(iterator, open(CHECKPOINT_COPY_FILE, "wb"))
+                    client.write_points(rows)
+                    # os.replace(CHECKPOINT_COPY_FILE, CHECKPOINT_FILE)
+        except:
+            logging.error(__("In file {}", file))
+            raise
 
 
 if __name__ == "__main__":
