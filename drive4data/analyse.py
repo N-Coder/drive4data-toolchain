@@ -78,7 +78,7 @@ def main():
                 if last:
                     values = last.split(",")
                     min_time = datetime.strptime(infos[0], "%m/%d/%Y %I:%M:%S %p")
-                    max_time = min_time + timedelta(seconds=int(values[0]))
+                    max_time = min_time + timedelta(milliseconds=int(values[0]))
                     if ids[infos[1]]["min"] > min_time:
                         ids[infos[1]]["min"] = min_time
                         ids[infos[1]]["min_file"] = path

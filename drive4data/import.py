@@ -74,7 +74,7 @@ def main():
 
             rows = [{
                         'measurement': 'samples',
-                        'time': base_time + timedelta(seconds=int(row[0])),
+                        'time': base_time + timedelta(milliseconds=int(row[0])),
                         'tags': {
                             'participant': participant,
                             'base_time': base_time,
