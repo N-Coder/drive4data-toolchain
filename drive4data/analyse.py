@@ -12,8 +12,7 @@ from webike.util.Utils import progress
 from util.SafeFileWalker import SafeFileWalker
 
 FW3I_VALUES = ["JTDKN3DP1D3034553", "5NPEB4AC6BH004902", "?????????????????"]
-FW3I_FOLDER = "../drive4data/Participants/Participant 04/Participant 04-2013-05-08T14-43-54-2015-01-30T16-51-00/" \
-              "Drive4Data - Participant 04/"
+FW3I_FOLDER = "Participant 04-2013-05-08T14-43-54-2015-01-30T16-51-00"
 
 __author__ = "Niko Fink"
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-3.3s %(name)-12.12s - %(message)s")
@@ -64,7 +63,7 @@ def main():
 
                 infos = second.strip().split(",")
                 if len(infos) != 3 or len(infos[2]) != 0:
-                    if infos[2] in FW3I_VALUES and path.startswith(FW3I_FOLDER):
+                    if infos[2] in FW3I_VALUES and FW3I_FOLDER in path:
                         files_with_3_infos.append(path)
                     else:
                         logger.warning(__("Invalid info in {}:2 '{}'", path, second.strip()))
