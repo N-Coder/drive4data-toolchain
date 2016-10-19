@@ -120,7 +120,7 @@ def parse_file(client, file):
                         'source': file
                     },
                     'fields': dict([(k, float(v)) for k, v in zip(header, row)
-                                    if k in COLS and math.isfinite(v)])
+                                    if k in COLS and math.isfinite(float(v))])
                 } for row in reader]
         counter = itertools.count()  # zipping with a counter is the most efficient way to count an iterable
         rows = [r for c, r in zip(counter, rows)]  # so, increase counter with each consumed item
