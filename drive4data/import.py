@@ -31,6 +31,7 @@ COLS = ['ac_hvpower', 'boardtemperature', 'charger_accurrent', 'charger_acvoltag
 
 __author__ = "Niko Fink"
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-3.3s %(name)-12.12s - %(message)s")
+logging.getLogger("urllib3").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROCESSES = 4
@@ -73,20 +74,20 @@ def walk_files(args):
     client = InfluxDBClient(cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'])
 
     row_count = 0
-    last_save = 0
+    last_save = -1
+    has_tmp_file = False
     for file in progress(files):
         try:
-            # save the current position
-            save = (perf_counter() - last_save) > 30
-            if save:
+            if last_save != row_count:
                 pickle.dump(files, open(CHECKPOINT_COPY_FILE.format(nr), "wb"))
+                last_save = row_count
+                has_tmp_file = True
 
             row_count += parse_file(client, file)
 
-            # if we made a checkpoint at the beginning of this successful loop, persist it now
-            if save:
+            if has_tmp_file:
                 os.replace(CHECKPOINT_COPY_FILE.format(nr), CHECKPOINT_FILE.format(nr))
-                last_save = perf_counter()
+                has_tmp_file = False
         except:
             logger.error(__("In file  {}", file))
             raise
