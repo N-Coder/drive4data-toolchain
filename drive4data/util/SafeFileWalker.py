@@ -1,10 +1,15 @@
 from os import listdir
 from os.path import isfile, join
 
+import collections
+
 
 class SafeFileWalker:
     def __init__(self, root):
-        self.stack = [root]
+        if isinstance(root, collections.Sequence) and not isinstance(root, str):
+            self.stack = list(root)
+        else:
+            self.stack = [root]
 
     def __iter__(self):
         return self
