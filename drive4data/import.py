@@ -76,7 +76,7 @@ def walk_files(args):
     row_count = 0
     last_save = -1
     has_tmp_file = False
-    for file in progress(files):
+    for file in progress(files, logger=logger):
         try:
             if last_save != row_count:
                 pickle.dump(files, open(CHECKPOINT_COPY_FILE.format(nr), "wb"))
@@ -146,7 +146,7 @@ def extract_participant(file):
 
 def extract_header(file, reader):
     header = next(reader)
-    if "Trip" in header:
+    if "Trip" in header or "Trip Id" in header:
         logger.warning(__("Skipping trip file {}", file))
         return None
     assert header[0] == "Timestamp", "Illegal header row {}".format(header)
