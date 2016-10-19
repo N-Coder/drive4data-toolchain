@@ -24,15 +24,12 @@ setup(
     ],
     packages=find_packages(),
     install_requires=[
-        'matplotlib>=2.0.0b4',
-        'metar>=1.4.0',
-        'numpy>=1.11.0',
-        'pygobject>=3.20.1',
-        'PyMySQL>=0.7.9',
-        'scipy>=0.18.0',
         'tabulate>=0.7.5',
-        'wget>=3.2',
-        'more-itertools>=2.2'
+        'more-itertools>=2.2',
+        'python-geohash>=0.8.5',
+        'influxdb>=3.0.0',
+        'more-itertools>=2.2',
+        'webike'
     ],
     include_package_data=True,
     package_data={
