@@ -9,7 +9,6 @@ import sys
 from datetime import datetime, timedelta
 from multiprocessing.pool import Pool
 from os.path import join
-from time import perf_counter
 
 from influxdb import InfluxDBClient
 from more_itertools import peekable
@@ -99,6 +98,7 @@ def walk_files(args):
 def parse_file(client, file):
     # extract the participant
     participant = extract_participant(file)
+    stat = os.stat(file)
     with open(file, 'rt', newline='') as f:
         reader = csv.reader(f)
 
@@ -116,12 +116,16 @@ def parse_file(client, file):
                     'time': base_time + timedelta(milliseconds=int(row[0])),
                     'tags': {
                         'participant': participant,
-                        'base_time': base_time,
+                        # 'base_time': base_time,
                         'car_id': car_id,
-                        'source': file
+                        # 'source': file
                     },
-                    'fields': dict([(k, float(v)) for k, v in zip(header, row)
-                                    if k in COLS and math.isfinite(float(v))])
+                    'fields': dict(
+                        [(k, float(v)) for k, v in zip(header, row)
+                         if k in COLS and math.isfinite(float(v))]
+                    ).update({
+                        'source': stat.st_ino
+                    })
                 } for row in reader]
         counter = itertools.count()  # zipping with a counter is the most efficient way to count an iterable
         rows = [r for c, r in zip(counter, rows)]  # so, increase counter with each consumed item
