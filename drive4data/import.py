@@ -99,8 +99,9 @@ def walk_files(args):
 def extract_row(row, header, constants):
     values = dict([(k, float(v)) for k, v in zip(header, row)
                    if k in COLS and math.isfinite(float(v))])
-    if 'gps_lat_deg' in values and 'gps_lon_deg' in values:
-        values['gps_geohash'] = geohash.encode(float(values['gps_lat_deg']), float(values['gps_lon_deg']))
+    if 'gps_lat_deg' in values and 'gps_lon_deg' in values and \
+            (values['gps_lat_deg'] != 0 or values['gps_lon_deg'] != 0):
+        values['gps_geohash'] = geohash.encode(values['gps_lat_deg'], values['gps_lon_deg'])
     values.update(constants)
     return values
 
