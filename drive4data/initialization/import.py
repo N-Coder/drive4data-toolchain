@@ -17,7 +17,7 @@ from webike.util.DB import default_credentials
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
 
-from analyse import FW3I_VALUES, FW3I_FOLDER
+from initialization.analyse import FW3I_VALUES, FW3I_FOLDER
 from util.SafeFileWalker import SafeFileWalker
 
 CHECKPOINT_FILE = "checkpoint{}.pickle"
@@ -92,7 +92,7 @@ def walk_files(args):
             logger.error(__("In file  {}", file))
             raise
 
-    logger.info(__("finished reading {} rows", nr, row_count))
+    logger.info(__("finished reading {} rows", row_count))
     return row_count
 
 
