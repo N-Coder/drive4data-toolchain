@@ -2,6 +2,7 @@ import itertools
 import logging
 from time import perf_counter
 
+import influxdb.resultset
 from influxdb import InfluxDBClient
 
 from util.AsyncLookaheadIterator import AsyncLookaheadIterator
@@ -13,6 +14,27 @@ async_logger = logger.getChild("async")
 _marker = object()
 
 
+class ExtendedResultSet(influxdb.resultset.ResultSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.time_field = self.time_format = self.time_epoch = None  # injected
+
+    def _get_points_for_serie(self, serie):
+        result = super()._get_points_for_serie(serie)
+        if self.time_format:
+            result = map(self._format_time, result)
+        return result
+
+    def _format_time(self, point):
+        if self.time_field in point:
+            point[self.time_field] = self.time_format(point[self.time_field], self.time_epoch)
+        return point
+
+
+influxdb.resultset.ResultSet = ExtendedResultSet
+influxdb.client.ResultSet = ExtendedResultSet
+
+
 def escape_series_tag(p):
     k, v = p.split("=")
     return "{}='{}'".format(k, v)
@@ -22,6 +44,9 @@ class InfluxDBStreamingClient(InfluxDBClient):
     def __init__(self, *args, **kwargs):
         self.batched = kwargs.pop('batched', False)
         self.async_executor = kwargs.pop('async_executor', None)
+        self.time_field = kwargs.pop('time_field', 'time')
+        self.time_format = kwargs.pop('time_format', None)
+        self.time_epoch = kwargs.pop('time_epoch', None)
         super().__init__(*args, **kwargs)
 
     def stream_series(self, measurement, fields=None, where="", group_order_by="", batch_size=DEFAULT_BATCH_SIZE):
@@ -52,6 +77,7 @@ class InfluxDBStreamingClient(InfluxDBClient):
 
         yield from self.stream_query(base_query, batch_size)
 
+    @staticmethod
     def __async_decorate(func):
         def func_wrapper(self, *args, **kwargs):
             iter = func(self, *args, **kwargs)
@@ -69,7 +95,7 @@ class InfluxDBStreamingClient(InfluxDBClient):
             query = query_format.format(offset=offset, limit=batch_size)
             before = perf_counter()
             async_logger.debug(" < block before")
-            result = self.query(query, params={'epoch': 'u'})  # TODO central time parsing
+            result = self.query(query)
             async_logger.debug(" > block after, blocked for {}s".format(perf_counter() - before))
             points = result.get_points()
 
@@ -85,3 +111,19 @@ class InfluxDBStreamingClient(InfluxDBClient):
         args = [iter(iterable)] * size
         iters = itertools.zip_longest(*args, fillvalue=_marker)
         return [filter(_marker.__ne__, it) for it in iters]
+
+    def query(self, *args, **kwargs):
+        time_field = kwargs.pop('time_field', self.time_field)
+        time_format = kwargs.pop('time_format', self.time_format)
+        time_epoch = kwargs.pop('time_epoch', self.time_epoch)
+
+        params = kwargs.pop('params', {})
+        if 'epoch' not in params or not params['epoch']:
+            if time_epoch:
+                params['epoch'] = time_epoch
+        else:
+            time_epoch = params['epoch']
+
+        result = super().query(*args, **kwargs, params=params)
+        result.time_field, result.time_format, result.time_epoch = (time_field, time_format, time_epoch)
+        return result

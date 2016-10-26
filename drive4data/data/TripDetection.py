@@ -16,14 +16,15 @@ logger = logging.getLogger(__name__)
 cred = default_credentials("Drive4Data-DB")
 
 
-def parse_time(sample):
-    return datetime.fromtimestamp(sample['time'] / 1000000)
+def parse_time(value, epoch):
+    assert epoch == 'u'
+    return datetime.fromtimestamp(value / 1000000)
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
     client = InfluxDBClient(
         cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'],
-        batched=False, async_executor=executor)
+        batched=False, async_executor=executor, time_epoch='u', time_format=parse_time)
 
     res = client.stream_series("samples", fields="time, veh_speed", batch_size=1000000,
                                where="participant='5' AND veh_speed > 0")
@@ -33,7 +34,8 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
 
         cycles_curr, cycles_curr_disc = \
             extract_cycles(iter, "veh_speed", lambda x: x > 1, lambda x: x < 1, 100, timedelta(minutes=10),
-                           timedelta(minutes=1), parse_time)
+                           timedelta(minutes=1), lambda s: s['time'])
+        # TODO store results
         # if cycles_curr:
         #     logger.info(tabulate(cycles_curr))
         #     logger.info(tabulate(cycles_curr_disc))
