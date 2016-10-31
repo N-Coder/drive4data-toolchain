@@ -74,14 +74,14 @@ class InfluxDBStreamingClient(InfluxDBClient):
     def stream_series(self, measurement, fields=None, where="", group_order_by="", batch_size=DEFAULT_BATCH_SIZE):
         # fetch all series for this measurement and parse the result
         series_res = self.query("SHOW SERIES FROM \"{}\"".format(measurement))
-        series = [v['key'].split(",")[1:] for v in series_res.get_points()]
+        series = (v['key'].split(",")[1:] for v in series_res.get_points())
         # for each series, create a WHERE clause selecting only entries from that exact series
-        series_selectors = [" AND ".join([escape_series_tag(v) for v in a]) for a in series]
+        series_selectors = (" AND ".join(escape_series_tag(v) for v in a) for a in series)
 
         # iterate all series independently
         for sselector in series_selectors:
             # join series WHERE clause and WHERE clause from params
-            selector = " AND ".join(["({})".format(w) for w in [where, sselector] if w])
+            selector = " AND ".join("({})".format(w) for w in [where, sselector] if w)
 
             # paginate entries in this series
             yield (sselector, self.stream_params(measurement, fields, selector, group_order_by, batch_size))
@@ -120,7 +120,7 @@ class InfluxDBStreamingClient(InfluxDBClient):
     def _batches(self, iterable, size):
         args = [iter(iterable)] * size
         iters = itertools.zip_longest(*args, fillvalue=_marker)
-        return [filter(_marker.__ne__, it) for it in iters]
+        return (filter(_marker.__ne__, it) for it in iters)
 
     def query(self, *args, **kwargs):
         time_field = kwargs.pop('time_field', self.time_field)

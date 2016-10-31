@@ -1,7 +1,6 @@
+import collections
 from os import listdir
 from os.path import isfile, join
-
-import collections
 
 
 class SafeFileWalker:
@@ -20,5 +19,5 @@ class SafeFileWalker:
             if isfile(file):
                 return file
             else:
-                self.stack.extend([join(file, sub) for sub in listdir(file)])
+                self.stack.extend(join(file, sub) for sub in listdir(file))
         raise StopIteration
