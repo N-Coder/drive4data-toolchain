@@ -27,7 +27,11 @@ class AsyncLookaheadIterator(object):
         # return the last result and schedule the next execution in the background
         before = perf_counter()
         self._log.debug("[  wait before")
-        result = self._pending.result()
-        self._log.debug("]  wait after, waited for {}s".format(perf_counter() - before))
-        self.__queue_next()
-        return result
+        try:
+            result = self._pending.result()
+            self._log.debug("]  wait after, waited for {}s".format(perf_counter() - before))
+            self.__queue_next()
+            return result
+        except StopIteration:
+            self._log.debug("]  wait stopped at end, waited for {}s".format(perf_counter() - before))
+            raise
