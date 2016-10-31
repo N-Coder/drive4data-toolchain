@@ -4,12 +4,13 @@ from time import perf_counter
 
 import influxdb.resultset
 from influxdb import InfluxDBClient
+from more_itertools import peekable
 
 from util.AsyncLookaheadIterator import AsyncLookaheadIterator
 
 DEFAULT_BATCH_SIZE = 50000
 TO_SECONDS = {
-    'ns': 10e-9,
+    'n': 10e-9,
     'u': 10e-6,
     'ms': 10e-3,
     's': 1,
@@ -107,15 +108,13 @@ class InfluxDBStreamingClient(InfluxDBClient):
             async_logger.debug(" < block before")
             result = self.query(query)
             async_logger.debug(" > block after, blocked for {}s".format(perf_counter() - before))
-            points = result.get_points()
 
-            counter = itertools.count()  # zipping with a counter is the most efficient way to count an iterable
-            yield [r for c, r in zip(counter, points)]  # so, increase counter with each consumed item
-            count = next(counter) - 1  # number of consumed items was the previous value of the counter
-
-            # if the got less results than LIMIT, we read all values from this series
-            if count < batch_size:
+            # peek into the result, if it is empty, we read all values from this series
+            points = peekable(result.get_points())
+            if not points.peek(None):
                 break
+            else:
+                yield points
 
     def _batches(self, iterable, size):
         args = [iter(iterable)] * size
