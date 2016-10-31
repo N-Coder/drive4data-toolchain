@@ -1,9 +1,14 @@
 import concurrent.futures
+import itertools
 import logging
 from datetime import timedelta
+from typing import List
 
 from webike.util import ActivityDetection
 from webike.util.DB import default_credentials
+from webike.util.Logging import BraceMessage as __
+from webike.util.Utils import progress
+from webike.util.activity import Cycle
 
 from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient, TO_SECONDS
 
@@ -15,51 +20,88 @@ logger = logging.getLogger(__name__)
 
 cred = default_credentials("Drive4Data-DB")
 
-TIME_EPOCH = 'u'
+TIME_EPOCH = 'n'
 
 
 class TripDetection(ActivityDetection):
+    def __init__(self):
+        self.attr = 'veh_speed'
+
     def is_start(self, sample, previous):
-        return sample['veh_speed'] > 1
+        return sample[self.attr] > 1
 
     def is_end(self, sample, previous):
-        return sample['veh_speed'] < 1 or self.get_duration(previous, sample) > timedelta(minutes=10)
+        return sample[self.attr] < 1 or self.get_duration(previous, sample) > timedelta(minutes=10)
 
     def accumulate_samples(self, new_sample, accumulator):
         if accumulator is not None:
             avg, cnt = accumulator
-            return (avg + new_sample['veh_speed']) / 2, cnt + 1
+            return (avg + new_sample[self.attr]) / 2, cnt + 1
         else:
-            return new_sample['veh_speed'], 1
+            return float(new_sample[self.attr]), 1
 
     def check_reject_reason(self, cycle):
-        cycle_start, cycle_end, cycle_acc = cycle
-        acc_avg, acc_cnt = cycle_acc
+        acc_avg, acc_cnt = cycle.stats
         if acc_cnt < 100:
             return "acc_cnt<100"
-        elif self.get_duration(cycle_end, cycle_start) < timedelta(minutes=5):
+        elif self.get_duration(cycle.start, cycle.end) < timedelta(minutes=5):
             return "duration<5min"
         else:
             return None
 
     @staticmethod
-    def get_duration(cycle_end, cycle_start):
-        return timedelta(seconds=(cycle_start['time'] - cycle_end['time']) * TO_SECONDS[TIME_EPOCH])
+    def get_duration(first, second):
+        dur = (second['time'] - first['time']) * TO_SECONDS[TIME_EPOCH]
+        assert dur >= 0, "second sample {} happened before first {}".format(second, first)
+        return timedelta(seconds=dur)
+
+
+def write_influx(measurement, detector, cycles_curr: List[Cycle], cycles_curr_disc: List[Cycle]):
+    timeseries = itertools.chain.from_iterable(cycle_to_events(
+        cycle=cycle,
+        measurement=measurement,
+        participant=cycle.start['participant'],
+        discarded=cycle.reject_reason,
+        detector=detector
+    ) for cycle in cycles_curr + cycles_curr_disc)
+    if timeseries:
+        client.write_points(timeseries, time_precision=TIME_EPOCH)
+
+
+def cycle_to_events(cycle: Cycle, measurement, **tags):
+    if tags is None:
+        tags = {}
+    for time, is_start in [(cycle.start['time'], True), (cycle.end['time'], False)]:
+        yield {
+            'measurement': measurement,
+            'tags': {
+                **tags,
+                'started': is_start
+            },
+            'time': time,
+            'fields': {
+                'duration': cycle.end['time'] - cycle.start['time'],
+                'value': cycle.stats[0],
+                'sample_count': cycle.stats[1]
+            }
+        }
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
     client = InfluxDBClient(
         cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'],
         batched=False, async_executor=executor, time_epoch=TIME_EPOCH)
+    client.delete_series(measurement="trips")
 
-    res = client.stream_series("samples", fields="time, veh_speed", batch_size=1000000,
+    res = client.stream_series("samples", fields="time, veh_speed, participant", batch_size=200000,
                                where="participant='5' AND veh_speed > 0")
 
     for nr, (series, iter) in enumerate(res):
-        logger.info("#{}: {}".format(nr, series))
+        logger.info(__("#{}: {}", nr, series))
 
-        cycles_curr, cycles_curr_disc = TripDetection()(iter)
-        # TODO store results
-        # if cycles_curr:
-        #     logger.info(tabulate(cycles_curr))
-        #     logger.info(tabulate(cycles_curr_disc))
+        detector = TripDetection()
+        cycles_curr, cycles_curr_disc = detector(progress(iter))
+
+        logger.info(__("Writing {} + {} = {} cycles", len(cycles_curr), len(cycles_curr_disc),
+                       len(cycles_curr) + len(cycles_curr_disc)))
+        write_influx("trips", detector.attr, cycles_curr, cycles_curr_disc)
