@@ -4,11 +4,10 @@ import logging
 from datetime import timedelta
 from typing import List
 
-from webike.util import ActivityDetection
+from webike.util import Cycle, MergingActivityDetection
 from webike.util.DB import default_credentials
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
-from webike.util.activity import Cycle
 
 from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient, TO_SECONDS
 
@@ -23,7 +22,7 @@ cred = default_credentials("Drive4Data-DB")
 TIME_EPOCH = 'n'
 
 
-class TripDetection(ActivityDetection):
+class TripDetection(MergingActivityDetection):
     def __init__(self):
         self.attr = 'veh_speed'
 
@@ -40,6 +39,9 @@ class TripDetection(ActivityDetection):
         else:
             return float(new_sample[self.attr]), 1
 
+    def merge_stats(self, stats1, stats2):
+        return (stats1[0] + stats2[0]) / 2, stats1[1] + stats2[1]
+
     def check_reject_reason(self, cycle):
         acc_avg, acc_cnt = cycle.stats
         if acc_cnt < 100:
@@ -54,6 +56,12 @@ class TripDetection(ActivityDetection):
         dur = (second['time'] - first['time']) * TO_SECONDS[TIME_EPOCH]
         assert dur >= 0, "second sample {} happened before first {}".format(second, first)
         return timedelta(seconds=dur)
+
+    def extract_cycle_time(self, cycle: Cycle):
+        return cycle.start['time'], cycle.end['time']
+
+    def can_merge_times(self, last_start, last_end, new_start, new_end):
+        return (new_start - last_end) * TO_SECONDS[TIME_EPOCH] < 10 * TO_SECONDS['m']
 
 
 def write_influx(measurement, detector, cycles_curr: List[Cycle], cycles_curr_disc: List[Cycle]):
