@@ -126,13 +126,11 @@ def parse_file(client, file):
                     'measurement': 'samples',
                     'time': base_time + timedelta(milliseconds=int(row[0])),
                     'tags': {
-                        'participant': participant,
-                        # 'base_time': base_time,
-                        'car_id': car_id,
-                        # 'source': file
+                        'participant': participant
                     },
                     'fields': extract_row(row, header, {
-                        'source': stat.st_ino
+                        'source': stat.st_ino,
+                        'car_id': car_id
                     })
                 } for row in reader]
         counter = itertools.count()  # zipping with a counter is the most efficient way to count an iterable
