@@ -2,7 +2,7 @@ import concurrent.futures
 import logging
 from datetime import timedelta, datetime
 
-from webike.data.ChargeCycle import extract_cycles
+from webike.util import ActivityDetection
 from webike.util.DB import default_credentials
 
 from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
@@ -21,6 +21,35 @@ def parse_time(value, epoch):
     return datetime.fromtimestamp(value / 1000000)
 
 
+class TripDetection(ActivityDetection):
+    def is_start(self, sample, previous):
+        return sample['veh_speed'] > 1
+
+    def is_end(self, sample, previous):
+        return sample['veh_speed'] < 1 or self.get_duration(previous, sample) > timedelta(minutes=10)
+
+    def accumulate_samples(self, new_sample, accumulator):
+        if accumulator is not None:
+            avg, cnt = accumulator
+            return (avg + new_sample['veh_speed']) / 2, cnt + 1
+        else:
+            return new_sample['veh_speed'], 1
+
+    def check_reject_reason(self, cycle):
+        cycle_start, cycle_end, cycle_acc = cycle
+        acc_avg, acc_cnt = cycle_acc
+        if acc_cnt < 100:
+            return "acc_cnt<100"
+        elif self.get_duration(cycle_end, cycle_start) < timedelta(minutes=5):
+            return "duration<5min"
+        else:
+            return None
+
+    @staticmethod
+    def get_duration(cycle_end, cycle_start):
+        return cycle_start['time'] - cycle_end['time']
+
+
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
     client = InfluxDBClient(
         cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'],
@@ -32,9 +61,7 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
     for nr, (series, iter) in enumerate(res):
         logger.info("#{}: {}".format(nr, series))
 
-        cycles_curr, cycles_curr_disc = \
-            extract_cycles(iter, "veh_speed", lambda x: x > 1, lambda x: x < 1, 100, timedelta(minutes=10),
-                           timedelta(minutes=1), lambda s: s['time'])
+        cycles_curr, cycles_curr_disc = TripDetection()(iter)
         # TODO store results
         # if cycles_curr:
         #     logger.info(tabulate(cycles_curr))
