@@ -40,6 +40,18 @@ def escape_series_tag(p):
     return "{}='{}'".format(k, v)
 
 
+def async_decorate(func):
+    def func_wrapper(self, *args, **kwargs):
+        iter = func(self, *args, **kwargs)
+        if self.async_executor:
+            iter = AsyncLookaheadIterator(self.async_executor, iter, logger=async_logger, warm_start=True)
+        if not self.batched:
+            iter = itertools.chain.from_iterable(iter)
+        return iter
+
+    return func_wrapper
+
+
 class InfluxDBStreamingClient(InfluxDBClient):
     def __init__(self, *args, **kwargs):
         self.batched = kwargs.pop('batched', False)
@@ -77,19 +89,7 @@ class InfluxDBStreamingClient(InfluxDBClient):
 
         yield from self.stream_query(base_query, batch_size)
 
-    @staticmethod
-    def __async_decorate(func):
-        def func_wrapper(self, *args, **kwargs):
-            iter = func(self, *args, **kwargs)
-            if self.async_executor:
-                iter = AsyncLookaheadIterator(self.async_executor, iter, logger=async_logger, warm_start=True)
-            if not self.batched:
-                iter = itertools.chain.from_iterable(iter)
-            return iter
-
-        return func_wrapper
-
-    @__async_decorate
+    @async_decorate
     def stream_query(self, query_format, batch_size):
         for offset in itertools.count(0, batch_size):
             query = query_format.format(offset=offset, limit=batch_size)
