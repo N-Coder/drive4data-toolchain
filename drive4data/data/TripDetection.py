@@ -1,11 +1,11 @@
 import concurrent.futures
 import logging
-from datetime import timedelta, datetime
+from datetime import timedelta
 
 from webike.util import ActivityDetection
 from webike.util.DB import default_credentials
 
-from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
+from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient, TO_SECONDS
 
 __author__ = "Niko Fink"
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-3.3s %(name)-12.12s - %(message)s")
@@ -15,10 +15,7 @@ logger = logging.getLogger(__name__)
 
 cred = default_credentials("Drive4Data-DB")
 
-
-def parse_time(value, epoch):
-    assert epoch == 'u'
-    return datetime.fromtimestamp(value / 1000000)
+TIME_EPOCH = 'u'
 
 
 class TripDetection(ActivityDetection):
@@ -47,13 +44,13 @@ class TripDetection(ActivityDetection):
 
     @staticmethod
     def get_duration(cycle_end, cycle_start):
-        return cycle_start['time'] - cycle_end['time']
+        return timedelta(seconds=(cycle_start['time'] - cycle_end['time']) * TO_SECONDS[TIME_EPOCH])
 
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
     client = InfluxDBClient(
         cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'],
-        batched=False, async_executor=executor, time_epoch='u', time_format=parse_time)
+        batched=False, async_executor=executor, time_epoch=TIME_EPOCH)
 
     res = client.stream_series("samples", fields="time, veh_speed", batch_size=1000000,
                                where="participant='5' AND veh_speed > 0")

@@ -8,6 +8,14 @@ from influxdb import InfluxDBClient
 from util.AsyncLookaheadIterator import AsyncLookaheadIterator
 
 DEFAULT_BATCH_SIZE = 50000
+TO_SECONDS = {
+    'ns': 10e-9,
+    'u': 10e-6,
+    'ms': 10e-3,
+    's': 1,
+    'm': 60,
+    'h': 60 * 60
+}
 
 logger = logging.getLogger(__name__)
 async_logger = logger.getChild("async")
@@ -27,7 +35,9 @@ class ExtendedResultSet(influxdb.resultset.ResultSet):
 
     def _format_time(self, point):
         if self.time_field in point:
-            point[self.time_field] = self.time_format(point[self.time_field], self.time_epoch)
+            time = point[self.time_field]
+            point["__" + self.time_field] = time
+            point[self.time_field] = self.time_format(time, self.time_epoch)
         return point
 
 
