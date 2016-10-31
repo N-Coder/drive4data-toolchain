@@ -72,6 +72,11 @@ class InfluxDBStreamingClient(InfluxDBClient):
         self.time_epoch = kwargs.pop('time_epoch', None)
         super().__init__(*args, **kwargs)
 
+    def close(self):
+        self._session.close()
+        if hasattr(self, 'udp_socket'):
+            self.udp_socket.close()
+
     def stream_series(self, measurement, fields=None, where="", group_order_by="", batch_size=DEFAULT_BATCH_SIZE):
         # fetch all series for this measurement and parse the result
         series_res = self.query("SHOW SERIES FROM \"{}\"".format(measurement))
