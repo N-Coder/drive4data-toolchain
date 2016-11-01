@@ -1,5 +1,6 @@
 import concurrent.futures
 import logging
+import os
 from contextlib import ExitStack, closing
 
 from webike.util.DB import default_credentials
@@ -18,6 +19,7 @@ cred = default_credentials("Drive4Data-DB")
 
 
 def main():
+    os.makedirs("out", exist_ok=True)
     with ExitStack() as stack:
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         stack.enter_context(executor)

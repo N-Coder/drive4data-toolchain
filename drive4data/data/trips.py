@@ -1,3 +1,4 @@
+import csv
 import logging
 from datetime import timedelta
 
@@ -17,6 +18,10 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, *args, **kwargs):
+        self.hist_metrics_odo = []
+        self.hist_metrics_soc = []
+        self.hist_metrics_temp = []
+        self.hist_distance = []
         super().__init__('veh_speed', *args, **kwargs)
 
     def is_start(self, sample, previous):
@@ -57,8 +62,14 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
 
     def cycle_to_events(self, cycle: Cycle, measurement):
         metrics_odo = cycle.stats['metrics']["veh_odometer"]
+        self.hist_metrics_odo.append(metrics_odo.get_time_gap(cycle, self.get_duration, missing_value="X"))
         metrics_soc = cycle.stats['metrics']["hvbatt_soc"]
+        self.hist_metrics_soc.append(metrics_soc.get_time_gap(cycle, self.get_duration, missing_value="X"))
         metrics_temp = cycle.stats['metrics']["outside_air_temp"]
+        self.hist_metrics_temp.append(metrics_temp.get_time_gap(cycle, self.get_duration, missing_value="X"))
+
+        if metrics_odo.first_value() and metrics_odo.last_value():
+            self.hist_distance.append((metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['distance']))
 
         for event in super().cycle_to_events(cycle, measurement):
             event['fields'].update({
@@ -89,3 +100,14 @@ def preprocess_trips(client):
             detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "trips"),
             tags={'detector': detector.attr},
             time_precision=client.time_epoch)
+
+        for name, hist in [('odo', detector.hist_metrics_odo), ('soc', detector.hist_metrics_soc),
+                           ('temp', detector.hist_metrics_temp), ('dist', detector.hist_distance)]:
+            with open('out/hist_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(hist)
+
+        detector.hist_metrics_odo = []
+        detector.hist_metrics_soc = []
+        detector.hist_metrics_temp = []
+        detector.hist_distance = []
