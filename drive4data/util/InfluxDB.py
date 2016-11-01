@@ -10,9 +10,9 @@ from util.AsyncLookaheadIterator import AsyncLookaheadIterator
 
 DEFAULT_BATCH_SIZE = 50000
 TO_SECONDS = {
-    'n': 10e-9,
-    'u': 10e-6,
-    'ms': 10e-3,
+    'n': 0.000000001,
+    'u': 0.000001,
+    'ms': 0.001,
     's': 1,
     'm': 60,
     'h': 60 * 60
