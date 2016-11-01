@@ -35,6 +35,14 @@ class ActivityMetric:
     def last_value(self):
         return float(self.last[self.name]) if self.last else None
 
+    def get_time_gap(self, cycle, delta_func, missing_value=None):
+        diff_first = diff_last = missing_value
+        if self.first:
+            diff_first = delta_func(cycle.start, self.first)
+        if self.last:
+            diff_last = delta_func(self.last, cycle.end)
+        return diff_first, diff_last
+
 
 class InfluxActivityDetection(ActivityDetection):
     def __init__(self, attr, time_epoch='n', min_sample_count=100, min_cycle_duration=timedelta(minutes=5),
@@ -55,33 +63,12 @@ class InfluxActivityDetection(ActivityDetection):
         if 'cnt' not in accumulator:
             accumulator['cnt'] = 0
         accumulator['cnt'] += 1
-
-        # TODO make more generic
-        if 'metrics' not in accumulator:
-            accumulator['metrics'] = dict((n, ActivityMetric(n))
-                                          for n in ["veh_odometer", "hvbatt_soc", "outside_air_temp"])
-        for metric in accumulator['metrics'].values():
-            metric.update(new_sample)
-
-        if 'distance' not in accumulator:
-            accumulator['distance'] = 0
-        if '__prev' in accumulator:
-            interval = self.get_duration(accumulator['__prev'], new_sample)
-            accumulator['distance'] += (interval / TO_SECONDS['h']) * new_sample['veh_speed']
-        accumulator['__prev'] = new_sample
-
         return accumulator
 
     def merge_stats(self, stats1, stats2):
-        metrics = {}
-        metrics1, metrics2 = stats1['metrics'], stats2['metrics']
-        for key in metrics1.keys() & metrics2.keys():
-            metrics[key] = metrics1[key].merge(metrics2[key])
         return {
             'avg': (stats1['avg'] + stats2['avg']) / 2,
             'cnt': stats1['cnt'] + stats2['cnt'],
-            'metrics': metrics,
-            'distance': stats1['distance'] + stats2['distance']
         }
 
     def check_reject_reason(self, cycle):
@@ -103,41 +90,23 @@ class InfluxActivityDetection(ActivityDetection):
     def can_merge_times(self, last_start, last_end, new_start, new_end):
         return timedelta(seconds=(new_start - last_end) * TO_SECONDS[self.epoch]) < self.max_merge_gap
 
+    def cycles_to_timeseries(self, cycles: List[Cycle], measurement):
+        return itertools.chain.from_iterable(self.cycle_to_events(cycle, measurement) for cycle in cycles)
 
-def cycles_to_timeseries(measurement, detector, cycles: List[Cycle]):
-    return itertools.chain.from_iterable(cycle_to_events(
-        cycle=cycle,
-        measurement=measurement,
-        participant=cycle.start['participant'],
-        discarded=cycle.reject_reason,
-        detector=detector
-    ) for cycle in cycles)
+    def cycle_to_events(self, cycle: Cycle, measurement):
+        for time, is_start in [(cycle.start['time'], True), (cycle.end['time'], False)]:
+            yield {
+                'measurement': measurement,
+                'time': time,
+                'tags': {
+                    'participant': cycle.start['participant'],
+                    'discarded': cycle.reject_reason,
+                    'started': is_start
+                },
+                'fields': {
+                    'duration': cycle.end['time'] - cycle.start['time'],
+                    'value': cycle.stats['avg'],
+                    'sample_count': cycle.stats['cnt'],
 
-
-def cycle_to_events(cycle: Cycle, measurement, **tags):
-    if tags is None:
-        tags = {}
-    for time, is_start in [(cycle.start['time'], True), (cycle.end['time'], False)]:
-        # TODO check availability, time gap from start/end
-        metrics_odo = cycle.stats['metrics']["veh_odometer"]
-        metrics_soc = cycle.stats['metrics']["hvbatt_soc"]
-        metrics_temp = cycle.stats['metrics']["outside_air_temp"]
-        yield {
-            'measurement': measurement,
-            'tags': {
-                **tags,
-                'started': is_start
-            },
-            'time': time,
-            'fields': {
-                'duration': cycle.end['time'] - cycle.start['time'],
-                'value': cycle.stats['avg'],
-                'sample_count': cycle.stats['cnt'],
-                'est_distance': cycle.stats['distance'],
-                'odo_start': metrics_odo.first_value(),
-                'odo_end': metrics_odo.last_value(),
-                'soc_start': metrics_soc.first_value(),
-                'soc_end': metrics_soc.last_value(),
-                'outside_air_temp': metrics_temp.first_value()
+                }
             }
-        }

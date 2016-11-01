@@ -1,11 +1,13 @@
 import logging
 from datetime import timedelta
 
+from webike.util import Cycle
 from webike.util import MergingActivityDetection
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
 
-from data.activity import InfluxActivityDetection, cycles_to_timeseries
+from data.activity import InfluxActivityDetection, ActivityMetric
+from util.InfluxDB import TO_SECONDS
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
@@ -23,6 +25,52 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
     def is_end(self, sample, previous):
         return sample[self.attr] < 1 or self.get_duration(previous, sample) > self.MIN_DURATION
 
+    def accumulate_samples(self, new_sample, accumulator):
+        accumulator = super().accumulate_samples(new_sample, accumulator)
+
+        if 'metrics' not in accumulator:
+            accumulator['metrics'] = dict((n, ActivityMetric(n))
+                                          for n in ["veh_odometer", "hvbatt_soc", "outside_air_temp"])
+        for metric in accumulator['metrics'].values():
+            metric.update(new_sample)
+
+        if 'distance' not in accumulator:
+            accumulator['distance'] = 0
+        if '__prev' in accumulator:
+            interval = self.get_duration(accumulator['__prev'], new_sample)
+            accumulator['distance'] += (interval / TO_SECONDS['h']) * new_sample['veh_speed']
+        accumulator['__prev'] = new_sample
+
+        return accumulator
+
+    def merge_stats(self, stats1, stats2):
+        stats = super().merge_stats(stats1, stats2)
+
+        stats['metrics'] = {}
+        metrics1, metrics2 = stats1['metrics'], stats2['metrics']
+        for key in metrics1.keys() & metrics2.keys():
+            stats['metrics'][key] = metrics1[key].merge(metrics2[key])
+
+        stats['distance'] = stats1['distance'] + stats2['distance']
+
+        return stats
+
+    def cycle_to_events(self, cycle: Cycle, measurement):
+        metrics_odo = cycle.stats['metrics']["veh_odometer"]
+        metrics_soc = cycle.stats['metrics']["hvbatt_soc"]
+        metrics_temp = cycle.stats['metrics']["outside_air_temp"]
+
+        for event in super().cycle_to_events(cycle, measurement):
+            event['fields'].update({
+                'est_distance': cycle.stats['distance'],
+                'odo_start': metrics_odo.first_value(),
+                'odo_end': metrics_odo.last_value(),
+                'soc_start': metrics_soc.first_value(),
+                'soc_end': metrics_soc.last_value(),
+                'outside_air_temp': metrics_temp.first_value()
+            })
+            yield event
+
 
 def preprocess_trips(client):
     detector = TripDetection(time_epoch=client.time_epoch)
@@ -38,5 +86,6 @@ def preprocess_trips(client):
         logger.info(__("Writing {} + {} = {} cycles", len(cycles_curr), len(cycles_curr_disc),
                        len(cycles_curr) + len(cycles_curr_disc)))
         client.write_points(
-            cycles_to_timeseries("trips", detector.attr, cycles_curr + cycles_curr_disc),
+            detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "trips"),
+            tags={'detector': detector.attr},
             time_precision=client.time_epoch)
