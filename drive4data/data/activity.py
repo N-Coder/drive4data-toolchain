@@ -13,7 +13,7 @@ class InfluxActivityDetection(ActivityDetection):
         self.attr = attr
         self.epoch = time_epoch
         self.min_sample_count = min_sample_count
-        self.min_cycle_duration = min_cycle_duration
+        self.min_cycle_duration_s = min_cycle_duration / timedelta(seconds=1)
         self.max_merge_gap = max_merge_gap
         super().__init__()
 
@@ -31,15 +31,15 @@ class InfluxActivityDetection(ActivityDetection):
         acc_avg, acc_cnt = cycle.stats
         if acc_cnt < self.min_sample_count:
             return "acc_cnt<{}".format(self.min_sample_count)
-        elif self.get_duration(cycle.start, cycle.end) < self.min_cycle_duration:
-            return "duration<{}".format(self.min_cycle_duration)
+        elif self.get_duration(cycle.start, cycle.end) < self.min_cycle_duration_s:
+            return "duration<{}s".format(self.min_cycle_duration_s)
         else:
             return None
 
     def get_duration(self, first, second):
         dur = (second['time'] - first['time']) * TO_SECONDS[self.epoch]
         assert dur >= 0, "second sample {} happened before first {}".format(second, first)
-        return timedelta(seconds=dur)
+        return dur
 
     def extract_cycle_time(self, cycle: Cycle):
         return cycle.start['time'], cycle.end['time']

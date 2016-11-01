@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class TripDetection(InfluxActivityDetection, MergingActivityDetection):
+    MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
+
     def __init__(self, *args, **kwargs):
         super().__init__('veh_speed', *args, **kwargs)
 
@@ -19,7 +21,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
         return sample[self.attr] > 1
 
     def is_end(self, sample, previous):
-        return sample[self.attr] < 1 or self.get_duration(previous, sample) > timedelta(minutes=10)
+        return sample[self.attr] < 1 or self.get_duration(previous, sample) > self.MIN_DURATION
 
 
 def preprocess_trips(client):
