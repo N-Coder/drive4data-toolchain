@@ -1,13 +1,19 @@
+import copy
 import csv
 import logging
+from datetime import datetime
 from datetime import timedelta
 
+import webike
+from webike.data import Trips
 from webike.util import Cycle
 from webike.util import MergingActivityDetection
 from webike.util.Logging import BraceMessage as __
+from webike.util.Plot import to_hour_bin
 from webike.util.Utils import progress
 
 from data.activity import InfluxActivityDetection, ActivityMetric
+from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
 from util.InfluxDB import TO_SECONDS
 
 __author__ = "Niko Fink"
@@ -84,6 +90,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
 
 
 def preprocess_trips(client):
+    logger.info("Preprocessing trips")
     detector = TripDetection(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
@@ -111,3 +118,27 @@ def preprocess_trips(client):
         detector.hist_metrics_soc = []
         detector.hist_metrics_temp = []
         detector.hist_distance = []
+
+
+def extract_hist(client: InfluxDBClient):
+    logger.info("Generating trip histogram data")
+    hist_data = copy.deepcopy(webike.data.Trips.HIST_DATA)
+    res = client.stream_series("trips", where="discarded !~ /./ AND started = 'True'")
+    for nr, (series, iter) in enumerate(res):
+        logger.info(__("#{}: {}", nr, series))
+
+        for trip in progress(iter):
+            trip_time = datetime.fromtimestamp(trip['time'] * TO_SECONDS[client.time_epoch])
+            hist_data['start_times'].append(to_hour_bin(trip_time))
+            hist_data['start_weekday'].append(trip_time.weekday())
+            hist_data['start_month'].append(trip_time.month)
+            hist_data['durations'].append(round(trip['duration'] * TO_SECONDS['n'] / 60))
+
+            hist_trip_mappings = \
+                [('distances', 'est_distance'), ('trip_temp', 'outside_air_temp'), ('initial_soc', 'soc_start'),
+                 ('final_soc', 'soc_end')]
+            for hist_key, trip_key in hist_trip_mappings:
+                if trip_key in trip and trip[trip_key]:
+                    hist_data[hist_key].append(trip[trip_key])
+
+    return hist_data
