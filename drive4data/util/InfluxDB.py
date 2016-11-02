@@ -138,6 +138,6 @@ class InfluxDBStreamingClient(InfluxDBClient):
         else:
             time_epoch = params['epoch']
 
-        result = super().query(*args, **kwargs, params=params)
+        result = super().query(params=params, *args, **kwargs)
         result.time_field, result.time_format, result.time_epoch = (time_field, time_format, time_epoch)
         return result
