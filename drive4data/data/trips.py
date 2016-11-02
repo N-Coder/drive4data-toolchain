@@ -84,7 +84,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
                 'odo_end': metrics_odo.last_value(),
                 'soc_start': metrics_soc.first_value(),
                 'soc_end': metrics_soc.last_value(),
-                'outside_air_temp': metrics_temp.first_value()
+                'outside_air_temp': metrics_temp.last_value()
             })
             yield event
 
