@@ -40,7 +40,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             metric.update(new_sample)
 
         if 'distance' not in accumulator:
-            accumulator['distance'] = 0
+            accumulator['distance'] = 0.0
         if '__prev' in accumulator:
             interval = self.get_duration(accumulator['__prev'], new_sample)
             accumulator['distance'] += (interval / TO_SECONDS['h']) * new_sample['veh_speed']
@@ -73,7 +73,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
 
         for event in super().cycle_to_events(cycle, measurement):
             event['fields'].update({
-                'est_distance': cycle.stats['distance'],
+                'est_distance': float(cycle.stats['distance']),
                 'odo_start': metrics_odo.first_value(),
                 'odo_end': metrics_odo.last_value(),
                 'soc_start': metrics_soc.first_value(),

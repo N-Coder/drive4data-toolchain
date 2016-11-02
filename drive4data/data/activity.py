@@ -104,9 +104,8 @@ class InfluxActivityDetection(ActivityDetection):
                     'started': is_start
                 },
                 'fields': {
-                    'duration': cycle.end['time'] - cycle.start['time'],
-                    'value': cycle.stats['avg'],
-                    'sample_count': cycle.stats['cnt'],
-
+                    'duration': int(cycle.end['time'] - cycle.start['time']),
+                    'value': float(cycle.stats['avg']),
+                    'sample_count': int(cycle.stats['cnt'])
                 }
             }
