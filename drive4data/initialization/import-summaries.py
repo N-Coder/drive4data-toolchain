@@ -1,7 +1,6 @@
 import csv
 import itertools
 import logging
-import math
 import os
 import pickle
 import re
@@ -10,24 +9,22 @@ from datetime import datetime, timedelta
 from multiprocessing.pool import Pool
 from os.path import join
 
-import geohash
+import pytz
 from influxdb import InfluxDBClient
 from more_itertools import peekable
 from webike.util.DB import default_credentials
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
 
-from initialization.analyse import FW3I_VALUES, FW3I_FOLDER
 from util.SafeFileWalker import SafeFileWalker
 
 CHECKPOINT_FILE = "checkpoint{}.pickle"
 CHECKPOINT_COPY_FILE = "checkpoint{}.pickle.tmp"
-COLS = ['ac_hvpower', 'boardtemperature', 'charger_accurrent', 'charger_acvoltage', 'chargerplugstatus',
-        'chargetimeremaining', 'engine_afr', 'engine_rpm', 'ev_range_remaining', 'fuel_rate', 'gps_alt_metres',
-        'gps_lat_deg', 'gps_lon_deg', 'gps_speed_kph', 'gps_time', 'hvbatt_current', 'hvbatt_soc', 'hvbatt_temp',
-        'hvbatt_voltage', 'hvbs_cors_crnt', 'hvbs_fn_crnt', 'inputvoltage', 'ischarging', 'maf', 'motorvoltages',
-        'outside_air_temp', 'veh_odometer', 'veh_speed', 'vin_1', 'vin_2', 'vin_3', 'vin_digit', 'vin_frame1',
-        'vin_frame2', 'vin_index', 'reltime']
+COLS = ['Vehicle', 'Make', 'Model', 'Year', 'Trip Id', 'Date', 'Duration', 'Trip Distance (km)', 'Starting SOC (%)',
+        'Ending SOC (%)', 'Electrical Energy Consumed (kWh)', 'Gasoline Consumed']
+COLS_MAPPING = ['vehicle', 'make', 'model', 'year', 'trip_id', 'date', 'duration', 'distance', 'soc_start', 'soc_end',
+                'cons_energy', 'cons_gasoline']
+COLS_FLOAT = ['year', 'distance', 'soc_start', 'soc_end', 'cons_energy', 'cons_gasoline']
 
 __author__ = "Niko Fink"
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-3.3s %(name)-12.12s - %(message)s")
@@ -50,7 +47,7 @@ def main(cred, root):
         logger.info("Performing cold start")
 
         client = InfluxDBClient(cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'])
-        client.delete_series(measurement='samples')
+        client.delete_series(measurement='trips_import')
 
         files = chunkify([join(root, sub) for sub in os.listdir(root)], PROCESSES)
         iters = list([SafeFileWalker(f) for f in files])
@@ -96,13 +93,23 @@ def walk_files(args):
     return row_count
 
 
-def extract_row(row, header, constants):
-    values = dict([(k, float(v)) for k, v in zip(header, row)
-                   if k in COLS and math.isfinite(float(v))])
-    if 'gps_lat_deg' in values and 'gps_lon_deg' in values and \
-            (values['gps_lat_deg'] != 0 or values['gps_lon_deg'] != 0):
-        values['gps_geohash'] = geohash.encode(values['gps_lat_deg'], values['gps_lon_deg'])
-    values.update(constants)
+def get_time(row):
+    naive = datetime.strptime(row[5], "%B %d, %Y %I:%M:%S %p")
+    # Canada/Eastern without DST is just a guess
+    local = pytz.timezone("Canada/Eastern")
+    local_dt = local.localize(naive, is_dst=None)
+    utc_dt = local_dt.astimezone(pytz.utc)
+    return utc_dt
+
+
+def extract_row(row, header):
+    values = dict([(k, v) for k, v in zip(header, row)])
+    del values['date']
+    t = datetime.strptime(values['duration'], "%H:%M:%S")
+    values['duration'] = timedelta(hours=t.hour, minutes=t.minute, seconds=t.second).total_seconds()
+    for h in COLS_FLOAT:
+        if h in values:
+            values[h] = float(values[h])
     return values
 
 
@@ -118,20 +125,14 @@ def parse_file(client, file):
         if not header:
             return 0
 
-        # extract the info row
-        base_time, car_id = extract_infos(file, reader)
-
         # transform all the following rows for the InfluxDB client
         rows = [{
-                    'measurement': 'samples',
-                    'time': base_time + timedelta(milliseconds=int(row[0])),
+                    'measurement': 'trips_import',
+                    'time': get_time(row),
                     'tags': {
                         'participant': participant
                     },
-                    'fields': extract_row(row, header, {
-                        'source': stat.st_ino,
-                        'car_id': car_id
-                    })
+                    'fields': extract_row(row, header)
                 } for row in reader]
         counter = itertools.count()  # zipping with a counter is the most efficient way to count an iterable
         rows = [r for c, r in zip(counter, rows)]  # so, increase counter with each consumed item
@@ -145,7 +146,7 @@ def parse_file(client, file):
 
 
 def extract_participant(file):
-    m = re.search('Participant ([0-9]{2}b?)', file)
+    m = re.search('Participant ([0-9]{1,2}b?)', file)
     participant = m.group(1)
     if participant == "10b":
         participant = 11
@@ -156,45 +157,15 @@ def extract_participant(file):
 
 def extract_header(file, reader):
     header = next(reader)
-    if "Trip" in header or "Trip Id" in header:
-        logger.warning(__("Skipping trip file {}", file))
-        return None
-    assert header[0] == "Timestamp", "Illegal header row {}".format(header)
-    header[0] = "reltime"
-    regex = re.compile(r"\[.*\]$")
-    header = [regex.sub("", h.lower()) for h in header]
-    return header
-
-
-def extract_infos(file, reader):
-    infos = next(reader)
-    assert len(infos) == 3, "Illegal info row {}".format(infos)
-    assert len(infos[2]) == 0 or (infos[2] in FW3I_VALUES and FW3I_FOLDER in file), \
-        "Illegal info row {}".format(infos)
-    # base_time is in UTC
-    base_time = datetime.strptime(infos[0], "%m/%d/%Y %I:%M:%S %p")
-    car_id = infos[1]
-    return base_time, car_id
+    if header[0] == '\ufeff"Vehicle"':
+        header[0] = 'Vehicle'
+    if header == COLS:
+        return COLS_MAPPING
+    elif header == COLS[:-1]:
+        return COLS_MAPPING[:-1]
+    else:
+        raise ValueError("Illegal header row {}".format(header))
 
 
 if __name__ == "__main__":
     main(default_credentials("Drive4Data-DB"), sys.argv[1])
-
-
-# SQL STUFF
-# with DelayedKeyboardInterrupt():
-# pickle.dump(iterator, open(CHECKPOINT_COPY_FILE, "wb"))
-# os.replace(CHECKPOINT_COPY_FILE, CHECKPOINT_FILE)
-
-# rows = [[participant, base_time, car_id, base_time + timedelta(seconds=int(row[0]))]
-#         + [v for k, v in zip(header, row) if k in COLS]
-#         for row in reader]
-# sql_header = ['"{}"'.format(h) for h in header if h in COLS]
-# sql_header = ['"participant"', '"basetime"', '"csv_id"', '"abstime"'] + sql_header
-# sql_values = ["%s"] * len(sql_header)
-# sql = "INSERT INTO drive4data_sfink.samples ({}) VALUES ({})" \
-#     .format(", ".join(sql_header), ", ".join(sql_values))
-#
-# inserted = cursor.executemany(sql, rows)
-# logger.info(__("Inserted {} rows from file {}", inserted, file))
-# return inserted
