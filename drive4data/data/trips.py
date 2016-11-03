@@ -31,10 +31,10 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
         super().__init__('veh_speed', *args, **kwargs)
 
     def is_start(self, sample, previous):
-        return sample[self.attr] > 1
+        return sample[self.attr] > 0.1
 
     def is_end(self, sample, previous):
-        return sample[self.attr] < 1 or self.get_duration(previous, sample) > self.MIN_DURATION
+        return sample[self.attr] < 0.1 or self.get_duration(previous, sample) > self.MIN_DURATION
 
     def accumulate_samples(self, new_sample, accumulator):
         accumulator = super().accumulate_samples(new_sample, accumulator)
@@ -49,7 +49,18 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             accumulator['distance'] = 0.0
         if '__prev' in accumulator:
             interval = self.get_duration(accumulator['__prev'], new_sample)
-            accumulator['distance'] += (interval / TO_SECONDS['h']) * new_sample['veh_speed']
+            distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
+            accumulator['distance'] += distance
+            if 'fuel_rate' in new_sample:
+                if 'cons_gasoline' not in accumulator:
+                    accumulator['cons_gasoline'] = 0.0
+                accumulator['cons_gasoline'] += distance * new_sample['fuel_rate']
+            if 'hvbatt_current' in new_sample and 'hvbatt_voltage' in new_sample:
+                if 'cons_energy' not in accumulator:
+                    accumulator['cons_energy'] = 0.0
+                accumulator['cons_energy'] += \
+                    interval * new_sample['hvbatt_current'] * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
+
         accumulator['__prev'] = new_sample
 
         return accumulator
@@ -80,6 +91,7 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
         for event in super().cycle_to_events(cycle, measurement):
             event['fields'].update({
                 'est_distance': float(cycle.stats['distance']),
+                'cons_gasoline': float(cycle.stats['cons_gasoline']),
                 'odo_start': metrics_odo.first_value(),
                 'odo_end': metrics_odo.last_value(),
                 'soc_start': metrics_soc.first_value(),
@@ -138,7 +150,7 @@ def extract_hist(client: InfluxDBClient):
                 [('distances', 'est_distance'), ('trip_temp', 'outside_air_temp'), ('initial_soc', 'soc_start'),
                  ('final_soc', 'soc_end')]
             for hist_key, trip_key in hist_trip_mappings:
-                if trip_key in trip and trip[trip_key]:
+                if trip_key in trip and trip[trip_key] is not None:
                     hist_data[hist_key].append(trip[trip_key])
 
     return hist_data
