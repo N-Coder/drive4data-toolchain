@@ -1,8 +1,6 @@
-import json
 import logging
 import os
 import re
-import sys
 from collections import Counter
 from datetime import datetime, timedelta
 
@@ -11,20 +9,18 @@ from webike.util.Utils import progress
 
 from util.SafeFileWalker import SafeFileWalker
 
+__author__ = "Niko Fink"
+logger = logging.getLogger(__name__)
+
 FW3I_VALUES = ["JTDKN3DP1D3034553", "5NPEB4AC6BH004902", "?????????????????"]
 FW3I_FOLDER = "Participant 04-2013-05-08T14-43-54-2015-01-30T16-51-00"
 
-__author__ = "Niko Fink"
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s %(levelname)-3.3s %(name)-12.12s - %(message)s")
-logger = logging.getLogger(__name__)
 
-
-def main():
+def analyze(root):
     headers = Counter()
     ids = {}
     files_with_3_infos = []
 
-    root = sys.argv[1]
     for path in progress(SafeFileWalker(root)):
         try:
             m = re.search('Participant ([0-9]{2}b?)', path)
@@ -88,13 +84,7 @@ def main():
             logging.error(__("In file {}", path))
             raise
 
-    print(json.dumps(headers, sort_keys=True, indent=4, separators=(',', ': ')))
     for k, v in ids.items():
         v["min"] = str(v["min"])
         v["max"] = str(v["max"])
-    print(json.dumps(ids, sort_keys=True, indent=4, separators=(',', ': ')))
-    # print(files_with_3_infos)
-
-
-if __name__ == "__main__":
-    main()
+    return headers, ids, files_with_3_infos
