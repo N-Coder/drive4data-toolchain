@@ -56,7 +56,10 @@ class Importer:
     def do_import(self, root):
         if all([os.path.isfile(self.checkpoint_file.format(i)) for i in range(0, self.processes)]):
             self.logger.info("Loading checkpoint")
-            iters = [pickle.load(open(self.checkpoint_file.format(i), "rb")) for i in range(0, self.processes)]
+            iters = []
+            for i in range(0, self.processes):
+                with open(self.checkpoint_file.format(i), "rb") as f:
+                    iters.append(pickle.load(f))
 
         else:
             self.logger.info("Performing cold start")
@@ -68,7 +71,8 @@ class Importer:
             iters = list([SafeFileWalker(f) for f in files])
 
             for nr, it in enumerate(iters):
-                pickle.dump(it, open(self.checkpoint_file.format(nr), "wb"))
+                with open(self.checkpoint_file.format(nr), "wb") as f:
+                    pickle.dump(it, f)
 
         assert len(iters) == self.processes
 
@@ -90,7 +94,8 @@ class Importer:
             for file in progress(files, logger=self.logger):
                 try:
                     if last_save != row_count:
-                        pickle.dump(files, open(self.checkpoint_copy_file.format(nr), "wb"))
+                        with open(self.checkpoint_copy_file.format(nr), "wb") as f:
+                            pickle.dump(files, f)
                         last_save = row_count
                         has_tmp_file = True
 
