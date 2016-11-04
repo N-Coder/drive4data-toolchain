@@ -89,9 +89,12 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             self.hist_distance.append((metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['distance']))
 
         for event in super().cycle_to_events(cycle, measurement):
+            if 'cons_energy' in cycle.stats:
+                event['fields'] = float(cycle.stats['cons_energy'])
+            if 'cons_gasoline' in cycle.stats:
+                event['fields'] = float(cycle.stats['cons_gasoline'])
             event['fields'].update({
                 'est_distance': float(cycle.stats['distance']),
-                'cons_gasoline': float(cycle.stats['cons_gasoline']),
                 'odo_start': metrics_odo.first_value(),
                 'odo_end': metrics_odo.last_value(),
                 'soc_start': metrics_soc.first_value(),
