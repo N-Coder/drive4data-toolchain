@@ -20,6 +20,7 @@ TO_SECONDS = {
 
 logger = logging.getLogger(__name__)
 async_logger = logger.getChild("async")
+async_logger.setLevel(logging.INFO)
 _marker = object()
 
 
