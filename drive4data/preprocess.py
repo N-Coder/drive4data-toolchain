@@ -5,6 +5,7 @@ from contextlib import ExitStack, closing
 
 from webike.util.DB import default_credentials
 
+from data.charge import preprocess_cycles
 from data.trips import preprocess_trips
 from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
 
@@ -30,8 +31,9 @@ def main():
         stack.enter_context(closing(client))
 
         client.delete_series(measurement="trips")
-
         preprocess_trips(client)
+        client.delete_series(measurement="charge_cycles")
+        preprocess_cycles(client)
 
 
 if __name__ == "__main__":
