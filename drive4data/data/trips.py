@@ -109,14 +109,14 @@ def preprocess_trips(client):
     detector = TripDetection(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
-        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp",
+        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, fuel_rate, hvbatt_current",
         batch_size=500000,
         where="veh_speed > 0")
     for nr, (series, iter) in enumerate(res):
         logger.info(__("#{}: {}", nr, series))
         cycles_curr, cycles_curr_disc = detector(progress(iter))
 
-        logger.info(__("Writing {} + {} = {} cycles", len(cycles_curr), len(cycles_curr_disc),
+        logger.info(__("Writing {} + {} = {} trips", len(cycles_curr), len(cycles_curr_disc),
                        len(cycles_curr) + len(cycles_curr_disc)))
         client.write_points(
             detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "trips"),
