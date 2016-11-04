@@ -51,11 +51,12 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             interval = self.get_duration(accumulator['__prev'], new_sample)
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
             accumulator['distance'] += distance
-            if 'fuel_rate' in new_sample:
+            if 'fuel_rate' in new_sample and new_sample['fuel_rate'] is not None:
                 if 'cons_gasoline' not in accumulator:
                     accumulator['cons_gasoline'] = 0.0
                 accumulator['cons_gasoline'] += distance * new_sample['fuel_rate']
-            if 'hvbatt_current' in new_sample and 'hvbatt_voltage' in new_sample:
+            if 'hvbatt_current' in new_sample and 'hvbatt_voltage' in new_sample and \
+                            new_sample['hvbatt_current'] is not None and new_sample['hvbatt_voltage'] is not None:
                 if 'cons_energy' not in accumulator:
                     accumulator['cons_energy'] = 0.0
                 accumulator['cons_energy'] += \
