@@ -13,12 +13,12 @@ from os.path import join
 
 import geohash
 import pytz
-from influxdb import InfluxDBClient
 from more_itertools import peekable
 from webike.util.Logging import BraceMessage as __
 from webike.util.Utils import progress
 
 from initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
+from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
 from util.SafeFileWalker import SafeFileWalker
 
 __author__ = "Niko Fink"
@@ -79,14 +79,15 @@ class Importer:
 
     def walk_files(self, args):
         nr, files = args
-        logger = self.logger.getChild(str(nr))
-        logger.info(__("{} starting", nr))
+        old_logger = self.logger
+        self.logger = self.logger.getChild(str(nr))
+        self.logger.info(__("{} starting", nr))
 
         with self.new_client() as client:
             row_count = 0
             last_save = -1
             has_tmp_file = False
-            for file in progress(files, logger=logger):
+            for file in progress(files, logger=self.logger):
                 try:
                     if last_save != row_count:
                         pickle.dump(files, open(self.checkpoint_copy_file.format(nr), "wb"))
@@ -99,11 +100,12 @@ class Importer:
                         os.replace(self.checkpoint_copy_file.format(nr), self.checkpoint_file.format(nr))
                         has_tmp_file = False
                 except:
-                    logger.error(__("In file  {}", file))
+                    self.logger.error(__("In file  {}", file))
                     raise
 
-            logger.info(__("finished reading {} rows", row_count))
-            return row_count
+        self.logger.info(__("finished reading {} rows", row_count))
+        self.logger = old_logger
+        return row_count
 
     def parse_file(self, client, file):
         # extract the participant
@@ -143,6 +145,15 @@ class Importer:
 
     def parse_rows(self, file, stat, participant, header, reader):
         pass
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['logger'] = self.logger.name
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.logger = logging.getLogger(self.logger)
 
 
 # noinspection PyMethodMayBeStatic
