@@ -36,15 +36,15 @@ class Importer:
                  checkpoint_file=None,
                  checkpoint_copy_file=None):
         if not logger:
-            self.logger = logging.getLogger(__name__).getChild(self.__name__)
+            self.logger = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.cred = cred
         self.measurement = measurement
         self.processes = processes
         if not checkpoint_file:
-            checkpoint_file = "tmp/{}-checkpoint{{}}.pickle".format(self.__name__)
+            checkpoint_file = "tmp/{}-checkpoint{{}}.pickle".format(self.__class__.__name__)
         self.checkpoint_file = checkpoint_file
         if not checkpoint_copy_file:
-            checkpoint_copy_file = "tmp/{}-checkpoint{{}}.pickle.tmp".format(self.__name__)
+            checkpoint_copy_file = "tmp/{}-checkpoint{{}}.pickle.tmp".format(self.__class__.__name__)
         self.checkpoint_copy_file = checkpoint_copy_file
 
     def new_client(self):

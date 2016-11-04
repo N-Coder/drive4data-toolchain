@@ -21,8 +21,8 @@ def main():
     cred = default_credentials("Drive4Data-DB")
 
     logger.info(__("Creating output directories in {}", os.getcwd()))
-    os.makedirs("tmp", exist_ok=False)
-    os.makedirs("out", exist_ok=False)
+    os.makedirs("tmp", exist_ok=True)
+    os.makedirs("out", exist_ok=True)
 
     root = sys.argv[1]
     logger.info(__("Will load data from {}", root))
