@@ -54,14 +54,14 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 
         # accumulated values depending on previous sample
-        if 'distance' not in accumulator:
-            accumulator['distance'] = 0.0
+        if 'est_distance' not in accumulator:
+            accumulator['est_distance'] = 0.0
         if '__prev' in accumulator:
             interval = self.get_duration(accumulator['__prev'], new_sample)
 
             # distance
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
-            accumulator['distance'] += distance
+            accumulator['est_distance'] += distance
 
             # cons_energy
             current = get_current(new_sample)
@@ -88,7 +88,7 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
     def merge_stats(self, stats1, stats2):
         stats = super().merge_stats(stats1, stats2)
 
-        stats['distance'] = stats1['distance'] + stats2['distance']
+        stats['est_distance'] = stats1['est_distance'] + stats2['est_distance']
         if 'cons_energy' in stats1 or 'cons_energy' in stats2:
             stats['cons_energy'] = stats1.get('cons_energy', 0) + stats2.get('cons_energy', 0)
         if 'cons_gasoline' in stats1 or 'cons_gasoline' in stats2:
@@ -98,14 +98,10 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
         return stats
 
     def cycle_to_events(self, cycle: Cycle, measurement):
-        data = {
-            'est_distance': float(cycle.stats['distance']),
-            'cons_energy': float(cycle.stats['cons_energy']),
-            'cons_gasoline': float(cycle.stats['cons_gasoline']),
-            'temp_avg': float(cycle.stats['temp_avg'])
-        }
         for event in super().cycle_to_events(cycle, measurement):
-            event['fields'].update(data)
+            for key in 'est_distance', 'cons_energy', 'cons_gasoline', 'temp_avg':
+                if key in cycle.stats:
+                    event['fields'][key] = float(cycle.stats[key])
             yield event
 
 
@@ -126,7 +122,8 @@ class TripDetectionHistogram(TripDetection):
         self.hist_metrics_temp.append(metrics_temp.get_time_gap(cycle, self.get_duration, missing_value="X"))
 
         if metrics_odo.first_value() and metrics_odo.last_value():
-            self.hist_distance.append((metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['distance']))
+            self.hist_distance.append(
+                (metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['est_distance']))
 
         return super().cycle_to_events(cycle, measurement)
 
