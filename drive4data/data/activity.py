@@ -8,42 +8,6 @@ from iss4e.db.influxdb import TO_SECONDS
 from webike.util.activity import ActivityDetection, Cycle
 
 
-class ActivityMetric:
-    def __init__(self, name):
-        self.name = name
-        self.first = self.last = None
-
-    def update(self, sample):
-        if sample and self.name in sample \
-                and sample[self.name] is not None \
-                and sample[self.name] < sys.float_info.max:
-            if not self.first:
-                self.first = sample
-            self.last = sample
-        return self
-
-    def merge(self, later):
-        assert later.name == self.name
-        merged = ActivityMetric(self.name)
-        merged.first = self.first
-        merged.last = later.last
-        return merged
-
-    def first_value(self):
-        return float(self.first[self.name]) if self.first else None
-
-    def last_value(self):
-        return float(self.last[self.name]) if self.last else None
-
-    def get_time_gap(self, cycle, delta_func, missing_value=None):
-        diff_first = diff_last = missing_value
-        if self.first:
-            diff_first = delta_func(cycle.start, self.first)
-        if self.last:
-            diff_last = delta_func(self.last, cycle.end)
-        return diff_first, diff_last
-
-
 class InfluxActivityDetection(ActivityDetection):
     def __init__(self, attr, time_epoch='n', min_sample_count=100, min_cycle_duration=timedelta(minutes=5),
                  max_merge_gap=timedelta(minutes=10)):
@@ -109,3 +73,86 @@ class InfluxActivityDetection(ActivityDetection):
                     'sample_count': int(cycle.stats['cnt'])
                 }
             }
+
+
+class ValueMemory:
+    def __init__(self, name, save_first=None, save_last=None):
+        self.name = name
+        self.save_first = save_first
+        self.save_last = save_last
+        self.first = self.last = None
+
+    def copy(self):
+        return ValueMemory(self.name, self.save_first, self.save_last)
+
+    def update(self, sample):
+        if sample and self.name in sample \
+                and sample[self.name] is not None \
+                and sample[self.name] < sys.float_info.max:
+            if not self.first:
+                self.first = sample
+            self.last = sample
+        return self
+
+    def merge(self, later):
+        assert later.name == self.name
+        merged = self.copy()
+        merged.first = self.first
+        merged.last = later.last
+        return merged
+
+    def first_value(self):
+        return float(self.first[self.name]) if self.first else None
+
+    def last_value(self):
+        return float(self.last[self.name]) if self.last else None
+
+    def get_time_gap(self, cycle, delta_func, missing_value=None):
+        diff_first = diff_last = missing_value
+        if self.first:
+            diff_first = delta_func(cycle.start, self.first)
+        if self.last:
+            diff_last = delta_func(self.last, cycle.end)
+        return diff_first, diff_last
+
+
+# noinspection PyAbstractClass
+class ValueMemoryMixin(InfluxActivityDetection):
+    def __init__(self, memorized_values=None, **kwargs):
+        if memorized_values is None:
+            memorized_values = []
+        self.memorized_values = memorized_values
+        super().__init__(**kwargs)
+
+    def accumulate_samples(self, new_sample, accumulator):
+        accumulator = super().accumulate_samples(new_sample, accumulator)
+
+        if 'memorized_values' not in accumulator:
+            accumulator['memorized_values'] = {}
+            for mem in self.memorized_values:
+                accumulator['memorized_values'][mem.name] = mem.copy()
+        for mem in accumulator['memorized_values'].values():
+            mem.update(new_sample)
+
+        return accumulator
+
+    def merge_stats(self, stats1, stats2):
+        stats = super().merge_stats(stats1, stats2)
+
+        stats['memorized_values'] = {}
+        mem1, mem2 = stats1['memorized_values'], stats2['memorized_values']
+        for key in mem1.keys() & mem2.keys():
+            stats['memorized_values'][key] = mem1[key].merge(mem2[key])
+
+        return stats
+
+    def cycle_to_events(self, cycle: Cycle, measurement):
+        data = {}
+        for mem in cycle.stats['memorized_values'].values():
+            if mem.save_first:
+                data[mem.save_first] = mem.first_value()
+            if mem.save_last:
+                data[mem.save_last] = mem.last_value()
+        for event in super().cycle_to_events(cycle, measurement):
+            event['fields'].update(data)
+            yield event

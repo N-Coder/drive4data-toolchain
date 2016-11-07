@@ -10,8 +10,7 @@ from iss4e.util import BraceMessage as __
 from iss4e.util import progress
 
 import webike
-from data.activity import ActivityMetric
-from data.activity import InfluxActivityDetection
+from data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
 from webike.data import Trips
 from webike.util.activity import MergingActivityDetection, Cycle
 from webike.util.plot import to_hour_bin
@@ -20,15 +19,27 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 
-class TripDetection(InfluxActivityDetection, MergingActivityDetection):
+def get_current(sample):
+    current = None
+    if sample.get('hvbatt_current') is not None:
+        current = sample['hvbatt_current']
+    elif sample.get('hvbs_fn_crnt') is not None and -23 < sample['hvbs_fn_crnt'] < 22:
+        current = sample['hvbs_fn_crnt']
+    elif sample.get('hvbs_cors_crnt') is not None:
+        current = sample['hvbs_cors_crnt']
+    return current
+
+
+class TripDetection(InfluxActivityDetection, MergingActivityDetection, ValueMemoryMixin):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, *args, **kwargs):
-        self.hist_metrics_odo = []
-        self.hist_metrics_soc = []
-        self.hist_metrics_temp = []
-        self.hist_distance = []
-        super().__init__('veh_speed', *args, **kwargs)
+        # save these values and store the respective first and last value with each cycle
+        memorized_values = [
+            ValueMemory('veh_odometer', save_first='odo_start', save_last='odo_end'),
+            ValueMemory('hvbatt_soc', save_first='soc_start', save_last='soc_end'),
+            ValueMemory('outside_air_temp', save_last='temp_last')]
+        super().__init__('veh_speed', memorized_values=memorized_values, *args, **kwargs)
 
     def is_start(self, sample, previous):
         return sample[self.attr] > 0.1
@@ -39,61 +50,67 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
     def accumulate_samples(self, new_sample, accumulator):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 
-        if 'temp_avg' in accumulator:
-            accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
-        else:
-            accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
-
-        if 'metrics' not in accumulator:
-            accumulator['metrics'] = dict((n, ActivityMetric(n))
-                                          for n in ["veh_odometer", "hvbatt_soc", "outside_air_temp"])
-        for metric in accumulator['metrics'].values():
-            metric.update(new_sample)
-
+        # accumulated values depending on previous sample
         if 'distance' not in accumulator:
             accumulator['distance'] = 0.0
         if '__prev' in accumulator:
             interval = self.get_duration(accumulator['__prev'], new_sample)
+
+            # distance
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
             accumulator['distance'] += distance
 
-            if new_sample.get('fuel_rate') is not None:
-                if 'cons_gasoline' not in accumulator:
-                    accumulator['cons_gasoline'] = 0.0
-                accumulator['cons_gasoline'] += interval * new_sample['fuel_rate']
-
-            current = None
-            if new_sample.get('hvbatt_current') is not None:
-                current = new_sample['hvbatt_current']
-            elif new_sample.get('hvbs_fn_crnt') is not None and -23 < new_sample['hvbs_fn_crnt'] < 22:
-                current = new_sample['hvbs_fn_crnt']
-            elif new_sample.get('hvbs_cors_crnt') is not None:
-                current = new_sample['hvbs_cors_crnt']
-
+            # cons_energy
+            current = get_current(new_sample)
             if current is not None and new_sample.get('hvbatt_voltage') is not None:
                 if 'cons_energy' not in accumulator:
                     accumulator['cons_energy'] = 0.0
                 accumulator['cons_energy'] += interval * current * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
 
-        accumulator['__prev'] = new_sample
+            # cons_gasoline
+            if new_sample.get('fuel_rate') is not None:
+                if 'cons_gasoline' not in accumulator:
+                    accumulator['cons_gasoline'] = 0.0
+                accumulator['cons_gasoline'] += interval * new_sample['fuel_rate']
 
+        # temp_avg
+        if 'temp_avg' in accumulator:
+            accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
+        else:
+            accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
+
+        accumulator['__prev'] = new_sample
         return accumulator
 
     def merge_stats(self, stats1, stats2):
         stats = super().merge_stats(stats1, stats2)
 
-        stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
-
-        stats['metrics'] = {}
-        metrics1, metrics2 = stats1['metrics'], stats2['metrics']
-        for key in metrics1.keys() & metrics2.keys():
-            stats['metrics'][key] = metrics1[key].merge(metrics2[key])
-
         stats['distance'] = stats1['distance'] + stats2['distance']
         stats['cons_energy'] = stats1['cons_energy'] + stats2['cons_energy']
         stats['cons_gasoline'] = stats1['cons_gasoline'] + stats2['cons_gasoline']
+        stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
 
         return stats
+
+    def cycle_to_events(self, cycle: Cycle, measurement):
+        data = {
+            'est_distance': float(cycle.stats['distance']),
+            'cons_energy': float(cycle.stats['cons_energy']),
+            'cons_gasoline': float(cycle.stats['cons_gasoline']),
+            'temp_avg': float(cycle.stats['temp_avg'])
+        }
+        for event in super().cycle_to_events(cycle, measurement):
+            event['fields'].update(data)
+            yield event
+
+
+class TripDetectionHistogram(TripDetection):
+    def __init__(self, *args, **kwargs):
+        self.hist_metrics_odo = []
+        self.hist_metrics_soc = []
+        self.hist_metrics_temp = []
+        self.hist_distance = []
+        super().__init__(*args, **kwargs)
 
     def cycle_to_events(self, cycle: Cycle, measurement):
         metrics_odo = cycle.stats['metrics']["veh_odometer"]
@@ -106,25 +123,12 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
         if metrics_odo.first_value() and metrics_odo.last_value():
             self.hist_distance.append((metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['distance']))
 
-        for event in super().cycle_to_events(cycle, measurement):
-            for key in ['cons_energy', 'cons_gasoline']:
-                if key in cycle.stats:
-                    event['fields'][key] = float(cycle.stats[key])
-            event['fields'].update({
-                'est_distance': float(cycle.stats['distance']),
-                'odo_start': metrics_odo.first_value(),
-                'odo_end': metrics_odo.last_value(),
-                'soc_start': metrics_soc.first_value(),
-                'soc_end': metrics_soc.last_value(),
-                'temp_last': metrics_temp.last_value(),
-                'temp_avg': float(cycle.stats['temp_avg'])
-            })
-            yield event
+        return super().cycle_to_events(cycle, measurement)
 
 
 def preprocess_trips(client):
     logger.info("Preprocessing trips")
-    detector = TripDetection(time_epoch=client.time_epoch)
+    detector = TripDetectionHistogram(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
         fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, fuel_rate, hvbatt_current",
