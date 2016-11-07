@@ -6,8 +6,8 @@ from contextlib import ExitStack, closing
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.util.config import load_config
 
-from data.charge import preprocess_cycles
-from data.trips import preprocess_trips
+from drive4data.data.charge import preprocess_cycles
+from drive4data.data.trips import preprocess_trips
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)

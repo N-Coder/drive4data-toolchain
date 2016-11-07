@@ -7,7 +7,7 @@ from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.util.config import load_config
 
 import webike
-from data import trips
+from drive4data.data import trips
 from webike.data import Trips
 
 __author__ = "Niko Fink"

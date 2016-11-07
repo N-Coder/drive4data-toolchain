@@ -20,7 +20,7 @@ from iss4e.util import SafeFileWalker
 from iss4e.util import progress
 from more_itertools import peekable
 
-from initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
+from drive4data.initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
 
 __author__ = "Niko Fink"
 

@@ -116,7 +116,6 @@ class ValueMemory(object):
         return diff_first, diff_last
 
 
-# noinspection PyAbstractClass
 class ValueMemoryMixin(object):
     def __init__(self, memorized_values=None, **kwargs):
         if memorized_values is None:

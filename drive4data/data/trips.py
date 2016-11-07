@@ -10,8 +10,8 @@ from iss4e.util import BraceMessage as __
 from iss4e.util import progress
 
 import webike
-from data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
-from data.soc import SoCMixin
+from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
+from drive4data.data.soc import SoCMixin
 from webike.data import Trips
 from webike.util.activity import Cycle
 from webike.util.plot import to_hour_bin

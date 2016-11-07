@@ -6,8 +6,8 @@ from iss4e.util import BraceMessage as __
 from iss4e.util import progress
 from iss4e.util.math import differentiate, smooth
 
-from data.activity import InfluxActivityDetection
-from data.soc import SoCMixin
+from drive4data.data.activity import InfluxActivityDetection
+from drive4data.data.soc import SoCMixin
 from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
