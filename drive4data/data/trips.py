@@ -31,18 +31,18 @@ def get_current(sample):
     return current
 
 
-class TripDetection(InfluxActivityDetection, MergingActivityDetection, ValueMemoryMixin, SoCMixin):
+class TripDetection(ValueMemoryMixin, MergingActivityDetection, SoCMixin):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         # save these values and store the respective first and last value with each cycle
         memorized_values = [
             ValueMemory('veh_odometer', save_first='odo_start', save_last='odo_end'),
             ValueMemory('outside_air_temp', save_last='temp_last')]
-        super().__init__('veh_speed',
+        super().__init__(attr='veh_speed',
                          min_sample_count=60, min_cycle_duration=timedelta(minutes=1),
                          max_merge_gap=timedelta(minutes=10),
-                         memorized_values=memorized_values, *args, **kwargs)
+                         memorized_values=memorized_values, **kwargs)
 
     def is_start(self, sample, previous):
         return sample[self.attr] > 0.1

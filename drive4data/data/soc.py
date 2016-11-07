@@ -1,13 +1,13 @@
 from datetime import datetime
 
-from db.influxdb import TO_SECONDS
+from iss4e.db.influxdb import TO_SECONDS
 
-from data.activity import InfluxActivityDetection, ActivityMetric
-from util.activity import Cycle
+from drive4data.data.activity import InfluxActivityDetection, ValueMemory
+from webike.util.activity import Cycle
 
 
 def _d(date):
-    return datetime.strptime(date, 'YYYY-MM-DD HH:MM:SS')
+    return datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 
 
 SCALING_FACTORS = {
@@ -39,7 +39,7 @@ class SoCMixin(InfluxActivityDetection):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 
         if 'soc' not in accumulator:
-            accumulator['soc'] = ActivityMetric("hvbatt_soc")
+            accumulator['soc'] = ValueMemory("hvbatt_soc")
         accumulator['soc'].update(new_sample)
 
         return accumulator

@@ -9,14 +9,14 @@ from webike.util.activity import ActivityDetection, Cycle
 
 
 class InfluxActivityDetection(ActivityDetection):
-    def __init__(self, attr, time_epoch='n', min_sample_count=100, min_cycle_duration=timedelta(minutes=5),
-                 max_merge_gap=timedelta(minutes=10)):
+    def __init__(self, attr='', time_epoch='n', min_sample_count=100, min_cycle_duration=timedelta(minutes=5),
+                 max_merge_gap=timedelta(minutes=10), **kwargs):
         self.attr = attr
         self.epoch = time_epoch
         self.min_sample_count = min_sample_count
         self.min_cycle_duration_s = min_cycle_duration / timedelta(seconds=1)
         self.max_merge_gap = max_merge_gap
-        super().__init__()
+        super().__init__(**kwargs)
 
     def accumulate_samples(self, new_sample, accumulator):
         if 'avg' in accumulator:
