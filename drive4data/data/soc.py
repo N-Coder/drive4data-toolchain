@@ -2,7 +2,7 @@ from datetime import datetime
 
 from iss4e.db.influxdb import TO_SECONDS
 
-from drive4data.data.activity import InfluxActivityDetection, ValueMemory
+from drive4data.data.activity import ValueMemory
 from webike.util.activity import Cycle
 
 
@@ -34,7 +34,7 @@ def rescale_soc(time, participant=None, soc_value=None):
     return (soc_value - min) / (max - min)
 
 
-class SoCMixin(InfluxActivityDetection):
+class SoCMixin(object):
     def accumulate_samples(self, new_sample, accumulator):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 

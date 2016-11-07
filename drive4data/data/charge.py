@@ -8,13 +8,13 @@ from iss4e.util.math import differentiate, smooth
 
 from data.activity import InfluxActivityDetection
 from data.soc import SoCMixin
-from webike.util.activity import MergingActivityDetection, Cycle
+from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 
-class ChargeCycleDerivDetection(InfluxActivityDetection, MergingActivityDetection, SoCMixin):
+class ChargeCycleDerivDetection(SoCMixin, InfluxActivityDetection):
     MAX_DELAY = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, *args, **kwargs):
@@ -36,7 +36,7 @@ class ChargeCycleDerivDetection(InfluxActivityDetection, MergingActivityDetectio
                self.get_duration(previous, sample) > self.MAX_DELAY
 
 
-class ChargeCycleCurrentDetection(InfluxActivityDetection, MergingActivityDetection, SoCMixin):
+class ChargeCycleCurrentDetection(SoCMixin, InfluxActivityDetection):
     MAX_DELAY = timedelta(hours=1) / timedelta(seconds=1)
 
     def __init__(self, *args, **kwargs):

@@ -5,10 +5,10 @@ from typing import List
 
 from iss4e.db.influxdb import TO_SECONDS
 
-from webike.util.activity import ActivityDetection, Cycle
+from webike.util.activity import ActivityDetection, Cycle, MergeMixin
 
 
-class InfluxActivityDetection(ActivityDetection):
+class InfluxActivityDetection(MergeMixin, ActivityDetection):
     def __init__(self, attr='', time_epoch='n', min_sample_count=100, min_cycle_duration=timedelta(minutes=5),
                  max_merge_gap=timedelta(minutes=10), **kwargs):
         self.attr = attr
@@ -75,7 +75,7 @@ class InfluxActivityDetection(ActivityDetection):
             }
 
 
-class ValueMemory:
+class ValueMemory(object):
     def __init__(self, name, save_first=None, save_last=None):
         self.name = name
         self.save_first = save_first
@@ -117,7 +117,7 @@ class ValueMemory:
 
 
 # noinspection PyAbstractClass
-class ValueMemoryMixin(InfluxActivityDetection):
+class ValueMemoryMixin(object):
     def __init__(self, memorized_values=None, **kwargs):
         if memorized_values is None:
             memorized_values = []

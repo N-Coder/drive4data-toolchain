@@ -13,7 +13,7 @@ import webike
 from data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
 from data.soc import SoCMixin
 from webike.data import Trips
-from webike.util.activity import MergingActivityDetection, Cycle
+from webike.util.activity import Cycle
 from webike.util.plot import to_hour_bin
 
 __author__ = "Niko Fink"
@@ -31,7 +31,7 @@ def get_current(sample):
     return current
 
 
-class TripDetection(ValueMemoryMixin, MergingActivityDetection, SoCMixin):
+class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, **kwargs):
@@ -68,7 +68,7 @@ class TripDetection(ValueMemoryMixin, MergingActivityDetection, SoCMixin):
             if current is not None and new_sample.get('hvbatt_voltage') is not None:
                 if 'cons_energy' not in accumulator:
                     accumulator['cons_energy'] = 0.0
-                accumulator['cons_energy'] += interval * current * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
+                accumulator['cons_energy'] += interval * -1 * current * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
 
             # cons_gasoline
             if new_sample.get('fuel_rate') is not None:
@@ -89,8 +89,10 @@ class TripDetection(ValueMemoryMixin, MergingActivityDetection, SoCMixin):
         stats = super().merge_stats(stats1, stats2)
 
         stats['distance'] = stats1['distance'] + stats2['distance']
-        stats['cons_energy'] = stats1['cons_energy'] + stats2['cons_energy']
-        stats['cons_gasoline'] = stats1['cons_gasoline'] + stats2['cons_gasoline']
+        if 'cons_energy' in stats1 or 'cons_energy' in stats2:
+            stats['cons_energy'] = stats1.get('cons_energy', 0) + stats2.get('cons_energy', 0)
+        if 'cons_gasoline' in stats1 or 'cons_gasoline' in stats2:
+            stats['cons_gasoline'] = stats1.get('cons_gasoline', 0) + stats2.get('cons_gasoline', 0)
         stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
 
         return stats
@@ -108,12 +110,12 @@ class TripDetection(ValueMemoryMixin, MergingActivityDetection, SoCMixin):
 
 
 class TripDetectionHistogram(TripDetection):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         self.hist_metrics_odo = []
         self.hist_metrics_soc = []
         self.hist_metrics_temp = []
         self.hist_distance = []
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     def cycle_to_events(self, cycle: Cycle, measurement):
         metrics_odo = cycle.stats['metrics']["veh_odometer"]
@@ -134,7 +136,8 @@ def preprocess_trips(client):
     detector = TripDetectionHistogram(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
-        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, fuel_rate, hvbatt_current",
+        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
+               "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
         batch_size=500000,
         where="veh_speed > 0")
     for nr, (series, iter) in enumerate(res):
