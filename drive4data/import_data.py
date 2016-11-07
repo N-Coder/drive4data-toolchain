@@ -4,9 +4,8 @@ import os
 import sys
 import warnings
 
-from webike.util.DB import default_credentials
-from webike.util.Logging import BraceMessage as __
-from webike.util.Logging import default_logging_config
+from iss4e.util import BraceMessage as __
+from iss4e.util.config import load_config
 
 from initialization import post_import
 from initialization import pre_import
@@ -17,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    default_logging_config()
-    cred = default_credentials("Drive4Data-DB")
+    config = load_config()
+    cred = config["drive4data.influx"]
 
     logger.info(__("Creating output directories in {}", os.getcwd()))
     os.makedirs("tmp", exist_ok=True)

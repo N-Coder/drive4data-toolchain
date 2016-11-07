@@ -4,9 +4,8 @@ import logging
 import os
 import pickle
 
-from webike.util.Logging import BraceMessage as __
-
-from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.util import BraceMessage as __
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
@@ -41,8 +40,7 @@ def analyze(cred):
             data = pickle.load(f)
     else:
         data = {}
-        with contextlib.closing(InfluxDBClient(cred['host'], cred['port'], cred['user'], cred['passwd'], cred['db'],
-                                               time_epoch=TIME_EPOCH)) as client:
+        with contextlib.closing(InfluxDBClient(time_epoch=TIME_EPOCH, **cred)) as client:
             logger.info(__("Querying res_first"))
             res_first = client.query(
                 "SELECT participant, first(source) FROM samples GROUP BY participant")

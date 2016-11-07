@@ -4,10 +4,9 @@ import re
 from collections import Counter
 from datetime import datetime, timedelta
 
-from webike.util.Logging import BraceMessage as __
-from webike.util.Utils import progress
-
-from util.SafeFileWalker import SafeFileWalker
+from iss4e.util import BraceMessage as __
+from iss4e.util import SafeFileWalker
+from iss4e.util import progress
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)

@@ -4,17 +4,17 @@ import logging
 from datetime import datetime
 from datetime import timedelta
 
-import webike
-from webike.data import Trips
-from webike.util import Cycle
-from webike.util import MergingActivityDetection
-from webike.util.Logging import BraceMessage as __
-from webike.util.Plot import to_hour_bin
-from webike.util.Utils import progress
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.db.influxdb import TO_SECONDS
+from iss4e.util import BraceMessage as __
+from iss4e.util import progress
 
-from data.activity import InfluxActivityDetection, ActivityMetric
-from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
-from util.InfluxDB import TO_SECONDS
+import webike
+from data.activity import ActivityMetric
+from data.activity import InfluxActivityDetection
+from webike.data import Trips
+from webike.util.activity import MergingActivityDetection, Cycle
+from webike.util.plot import to_hour_bin
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
@@ -51,12 +51,12 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             interval = self.get_duration(accumulator['__prev'], new_sample)
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
             accumulator['distance'] += distance
-            if 'fuel_rate' in new_sample and new_sample['fuel_rate'] is not None:
+            # TODO these values are not right:
+            if new_sample.get('fuel_rate') is not None:
                 if 'cons_gasoline' not in accumulator:
                     accumulator['cons_gasoline'] = 0.0
                 accumulator['cons_gasoline'] += distance * new_sample['fuel_rate']
-            if 'hvbatt_current' in new_sample and 'hvbatt_voltage' in new_sample and \
-                            new_sample['hvbatt_current'] is not None and new_sample['hvbatt_voltage'] is not None:
+            if new_sample.get('hvbatt_current') is not None and new_sample.get('hvbatt_voltage') is not None:
                 if 'cons_energy' not in accumulator:
                     accumulator['cons_energy'] = 0.0
                 accumulator['cons_energy'] += \

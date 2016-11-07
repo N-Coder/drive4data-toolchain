@@ -24,12 +24,9 @@ setup(
     ],
     packages=find_packages(),
     install_requires=[
-        'tabulate>=0.7.5',
-        'more-itertools>=2.2',
         'python-geohash>=0.8.5',
-        'influxdb>=3.0.0',
-        'more-itertools>=2.2',
-        'webike'
+        'webike',
+        'iss4e-toolchain'
     ],
     include_package_data=True,
     package_data={

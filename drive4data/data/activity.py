@@ -3,9 +3,9 @@ import sys
 from datetime import timedelta
 from typing import List
 
-from webike.util import ActivityDetection, Cycle
+from iss4e.db.influxdb import TO_SECONDS
 
-from util.InfluxDB import TO_SECONDS
+from webike.util.activity import ActivityDetection, Cycle
 
 
 class ActivityMetric:
@@ -100,11 +100,11 @@ class InfluxActivityDetection(ActivityDetection):
                 'time': time,
                 'tags': {
                     'participant': cycle.start['participant'],
-                    'discarded': cycle.reject_reason,
-                    'started': is_start
+                    'discarded': cycle.reject_reason
                 },
                 'fields': {
                     'duration': int(cycle.end['time'] - cycle.start['time']),
+                    'started': is_start,
                     'value': float(cycle.stats['avg']),
                     'sample_count': int(cycle.stats['cnt'])
                 }

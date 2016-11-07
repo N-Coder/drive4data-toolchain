@@ -7,19 +7,20 @@ import math
 import os
 import pickle
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
+from datetime import timedelta
 from multiprocessing.pool import Pool
 from os.path import join
 
 import geohash
 import pytz
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.util import BraceMessage as __
+from iss4e.util import SafeFileWalker
+from iss4e.util import progress
 from more_itertools import peekable
-from webike.util.Logging import BraceMessage as __
-from webike.util.Utils import progress
 
 from initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
-from util.InfluxDB import InfluxDBStreamingClient as InfluxDBClient
-from util.SafeFileWalker import SafeFileWalker
 
 __author__ = "Niko Fink"
 
@@ -48,10 +49,7 @@ class Importer:
         self.checkpoint_copy_file = checkpoint_copy_file
 
     def new_client(self):
-        return contextlib.closing(InfluxDBClient(
-            self.cred['host'], self.cred['port'],
-            self.cred['user'], self.cred['passwd'],
-            self.cred['db']))
+        return contextlib.closing(InfluxDBClient(**self.cred))
 
     def do_import(self, root):
         if all([os.path.isfile(self.checkpoint_file.format(i)) for i in range(0, self.processes)]):

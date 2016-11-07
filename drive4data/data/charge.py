@@ -1,13 +1,13 @@
 import logging
 from datetime import timedelta
 
-from webike.util import Cycle
-from webike.util import MergingActivityDetection
-from webike.util.Logging import BraceMessage as __
-from webike.util.Utils import progress, differentiate, smooth
+from iss4e.db.influxdb import TO_SECONDS
+from iss4e.util import BraceMessage as __
+from iss4e.util import progress
+from iss4e.util.math import differentiate, smooth
 
 from data.activity import InfluxActivityDetection
-from util.InfluxDB import TO_SECONDS
+from webike.util.activity import MergingActivityDetection, Cycle
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
