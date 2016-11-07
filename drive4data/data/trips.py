@@ -11,6 +11,7 @@ from iss4e.util import progress
 
 import webike
 from data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
+from data.soc import SoCMixin
 from webike.data import Trips
 from webike.util.activity import MergingActivityDetection, Cycle
 from webike.util.plot import to_hour_bin
@@ -30,14 +31,13 @@ def get_current(sample):
     return current
 
 
-class TripDetection(InfluxActivityDetection, MergingActivityDetection, ValueMemoryMixin):
+class TripDetection(InfluxActivityDetection, MergingActivityDetection, ValueMemoryMixin, SoCMixin):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, *args, **kwargs):
         # save these values and store the respective first and last value with each cycle
         memorized_values = [
             ValueMemory('veh_odometer', save_first='odo_start', save_last='odo_end'),
-            ValueMemory('hvbatt_soc', save_first='soc_start', save_last='soc_end'),
             ValueMemory('outside_air_temp', save_last='temp_last')]
         super().__init__('veh_speed', memorized_values=memorized_values, *args, **kwargs)
 
@@ -115,7 +115,7 @@ class TripDetectionHistogram(TripDetection):
     def cycle_to_events(self, cycle: Cycle, measurement):
         metrics_odo = cycle.stats['metrics']["veh_odometer"]
         self.hist_metrics_odo.append(metrics_odo.get_time_gap(cycle, self.get_duration, missing_value="X"))
-        metrics_soc = cycle.stats['metrics']["hvbatt_soc"]
+        metrics_soc = cycle.stats["soc"]
         self.hist_metrics_soc.append(metrics_soc.get_time_gap(cycle, self.get_duration, missing_value="X"))
         metrics_temp = cycle.stats['metrics']["outside_air_temp"]
         self.hist_metrics_temp.append(metrics_temp.get_time_gap(cycle, self.get_duration, missing_value="X"))
