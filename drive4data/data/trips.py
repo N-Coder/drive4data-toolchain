@@ -39,6 +39,11 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
     def accumulate_samples(self, new_sample, accumulator):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 
+        if 'temp_avg' in accumulator:
+            accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
+        else:
+            accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
+
         if 'metrics' not in accumulator:
             accumulator['metrics'] = dict((n, ActivityMetric(n))
                                           for n in ["veh_odometer", "hvbatt_soc", "outside_air_temp"])
@@ -77,12 +82,16 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
     def merge_stats(self, stats1, stats2):
         stats = super().merge_stats(stats1, stats2)
 
+        stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
+
         stats['metrics'] = {}
         metrics1, metrics2 = stats1['metrics'], stats2['metrics']
         for key in metrics1.keys() & metrics2.keys():
             stats['metrics'][key] = metrics1[key].merge(metrics2[key])
 
         stats['distance'] = stats1['distance'] + stats2['distance']
+        stats['cons_energy'] = stats1['cons_energy'] + stats2['cons_energy']
+        stats['cons_gasoline'] = stats1['cons_gasoline'] + stats2['cons_gasoline']
 
         return stats
 
@@ -107,7 +116,8 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
                 'odo_end': metrics_odo.last_value(),
                 'soc_start': metrics_soc.first_value(),
                 'soc_end': metrics_soc.last_value(),
-                'outside_air_temp': metrics_temp.last_value()
+                'temp_last': metrics_temp.last_value(),
+                'temp_avg': float(cycle.stats['temp_avg'])
             })
             yield event
 
