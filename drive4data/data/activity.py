@@ -99,12 +99,12 @@ class InfluxActivityDetection(ActivityDetection):
                 'measurement': measurement,
                 'time': time,
                 'tags': {
-                    'participant': cycle.start['participant'],
-                    'discarded': cycle.reject_reason
+                    'participant': cycle.start['participant']
                 },
                 'fields': {
                     'duration': int(cycle.end['time'] - cycle.start['time']),
                     'started': is_start,
+                    'discarded': cycle.reject_reason,
                     'value': float(cycle.stats['avg']),
                     'sample_count': int(cycle.stats['cnt'])
                 }
