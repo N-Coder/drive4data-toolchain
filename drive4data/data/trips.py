@@ -51,16 +51,24 @@ class TripDetection(InfluxActivityDetection, MergingActivityDetection):
             interval = self.get_duration(accumulator['__prev'], new_sample)
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
             accumulator['distance'] += distance
-            # TODO these values are not right:
+
             if new_sample.get('fuel_rate') is not None:
                 if 'cons_gasoline' not in accumulator:
                     accumulator['cons_gasoline'] = 0.0
-                accumulator['cons_gasoline'] += distance * new_sample['fuel_rate']
-            if new_sample.get('hvbatt_current') is not None and new_sample.get('hvbatt_voltage') is not None:
+                accumulator['cons_gasoline'] += interval * new_sample['fuel_rate']
+
+            current = None
+            if new_sample.get('hvbatt_current') is not None:
+                current = new_sample['hvbatt_current']
+            elif new_sample.get('hvbs_fn_crnt') is not None and -23 < new_sample['hvbs_fn_crnt'] < 22:
+                current = new_sample['hvbs_fn_crnt']
+            elif new_sample.get('hvbs_cors_crnt') is not None:
+                current = new_sample['hvbs_cors_crnt']
+
+            if current is not None and new_sample.get('hvbatt_voltage') is not None:
                 if 'cons_energy' not in accumulator:
                     accumulator['cons_energy'] = 0.0
-                accumulator['cons_energy'] += \
-                    interval * new_sample['hvbatt_current'] * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
+                accumulator['cons_energy'] += interval * current * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
 
         accumulator['__prev'] = new_sample
 
