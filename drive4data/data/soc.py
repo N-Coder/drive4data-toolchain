@@ -50,10 +50,10 @@ class SoCMixin(object):
         return stats
 
     def cycle_to_events(self, cycle: Cycle, measurement):
-        metrics_soc = cycle.stats["soc"]
+        soc = cycle.stats["soc"]
         data = {
-            'soc_start': self.rescale_soc(metrics_soc.first) if metrics_soc.first else None,
-            'soc_end': self.rescale_soc(metrics_soc.last) if metrics_soc.last else None
+            'soc_start': self.rescale_soc(soc.first) if soc.first else None,
+            'soc_end': self.rescale_soc(soc.last) if soc.last else None
         }
         for event in super().cycle_to_events(cycle, measurement):
             event['fields'].update(data)

@@ -118,11 +118,11 @@ class TripDetectionHistogram(TripDetection):
         super().__init__(**kwargs)
 
     def cycle_to_events(self, cycle: Cycle, measurement):
-        metrics_odo = cycle.stats['metrics']["veh_odometer"]
+        metrics_odo = cycle.stats['memorized_values']["veh_odometer"]
         self.hist_metrics_odo.append(metrics_odo.get_time_gap(cycle, self.get_duration, missing_value="X"))
         metrics_soc = cycle.stats["soc"]
         self.hist_metrics_soc.append(metrics_soc.get_time_gap(cycle, self.get_duration, missing_value="X"))
-        metrics_temp = cycle.stats['metrics']["outside_air_temp"]
+        metrics_temp = cycle.stats['memorized_values']["outside_air_temp"]
         self.hist_metrics_temp.append(metrics_temp.get_time_gap(cycle, self.get_duration, missing_value="X"))
 
         if metrics_odo.first_value() and metrics_odo.last_value():
