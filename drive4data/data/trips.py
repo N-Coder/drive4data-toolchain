@@ -63,49 +63,45 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
             distance = (interval / TO_SECONDS['h']) * new_sample['veh_speed']
             accumulator['est_distance'] += distance
 
-            # cons_energy
-            current = get_current(new_sample)
-            if current is not None and new_sample.get('hvbatt_voltage') is not None:
-                if 'cons_energy' not in accumulator:
-                    accumulator['cons_energy'] = 0.0
-                accumulator['cons_energy'] += interval * -1 * current * new_sample['hvbatt_voltage'] / TO_SECONDS['h']
-
-            # cons_gasoline
-            if new_sample.get('fuel_rate') is not None:
-                if 'cons_gasoline' not in accumulator:
-                    accumulator['cons_gasoline'] = 0.0
-                accumulator['cons_gasoline'] += interval * new_sample['fuel_rate']
-
-        # temp_avg
-        if new_sample.get('outside_air_temp') and math.isfinite(new_sample['outside_air_temp']):
-            if 'temp_avg' in accumulator:
-                accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
-            else:
-                accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
+        # average values
+        self.make_avg(accumulator, 'avg_current', get_current(new_sample))
+        self.make_avg(accumulator, 'avg_voltage', new_sample.get('hvbatt_voltage'))
+        self.make_avg(accumulator, 'avg_fuel_rate', new_sample.get('fuel_rate'))
+        self.make_avg(accumulator, 'temp_avg', new_sample.get('outside_air_temp'))
 
         accumulator['__prev'] = new_sample
         return accumulator
+
+    def make_avg(self, accumulator, name, value):
+        if value is not None and math.isfinite(value):
+            if name in accumulator:
+                accumulator[name] = (accumulator[name] + value) / 2
+            else:
+                accumulator[name] = float(value)
 
     def merge_stats(self, stats1, stats2):
         stats = super().merge_stats(stats1, stats2)
 
         stats['est_distance'] = stats1['est_distance'] + stats2['est_distance']
-        if 'cons_energy' in stats1 or 'cons_energy' in stats2:
-            stats['cons_energy'] = stats1.get('cons_energy', 0) + stats2.get('cons_energy', 0)
-        if 'cons_gasoline' in stats1 or 'cons_gasoline' in stats2:
-            stats['cons_gasoline'] = stats1.get('cons_gasoline', 0) + stats2.get('cons_gasoline', 0)
-        if stats1.get('temp_avg') and stats2.get('temp_avg'):
-            stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
-        elif stats1.get('temp_avg'):
-            stats['temp_avg'] = stats1['temp_avg']
-        elif stats2.get('temp_avg'):
-            stats['temp_avg'] = stats2['temp_avg']
+        self.merge_avg('avg_current', stats, stats1, stats2)
+        self.merge_avg('avg_voltage', stats, stats1, stats2)
+        self.merge_avg('avg_fuel_rate', stats, stats1, stats2)
+        self.merge_avg('temp_avg', stats, stats1, stats2)
 
         return stats
 
+    @staticmethod
+    def merge_avg(name, stats, stats1, stats2):
+        if stats1.get(name) and stats2.get(name):
+            stats[name] = (stats1[name] + stats2[name]) / 2
+        elif stats1.get(name):
+            stats[name] = stats1[name]
+        elif stats2.get(name):
+            stats[name] = stats2[name]
+
     def cycle_to_events(self, cycle: Cycle, measurement):
         for event in super().cycle_to_events(cycle, measurement):
-            for key in 'est_distance', 'cons_energy', 'cons_gasoline', 'temp_avg':
+            for key in 'est_distance', 'avg_current', 'avg_voltage', 'avg_fuel_rate', 'temp_avg':
                 if key in cycle.stats and math.isfinite(cycle.stats[key]):
                     event['fields'][key] = float(cycle.stats[key])
             yield event
