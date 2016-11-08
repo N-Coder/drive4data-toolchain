@@ -74,10 +74,17 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
 
     def make_avg(self, accumulator, name, value):
         if value is not None and math.isfinite(value):
-            if name in accumulator:
-                accumulator[name] = (accumulator[name] + value) / 2
-            else:
-                accumulator[name] = float(value)
+            cnt = accumulator.get('cnt', 1)  # the new sample is already counted
+            accumulator[name] = float(value + (cnt - 1) * accumulator.get(name, 0)) / cnt
+
+    def store_cycle(self, cycle: Cycle):
+        duration = (cycle.end['time'] - cycle.start['time']) * TO_SECONDS[self.epoch]
+        if 'avg_fuel_rate' in cycle.stats:
+            cycle.stats['cons_gasoline'] = cycle.stats['avg_fuel_rate'] * duration
+        if 'avg_current' in cycle.stats and 'avg_voltage' in cycle.stats:
+            cycle.stats['cons_energy'] = cycle.stats['avg_current'] * cycle.stats['avg_voltage'] \
+                                         * duration / TO_SECONDS['h']  # convert to Wh
+        super().store_cycle(cycle)
 
     def merge_stats(self, stats1, stats2):
         stats = super().merge_stats(stats1, stats2)
@@ -87,16 +94,21 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
         self.merge_avg('avg_voltage', stats, stats1, stats2)
         self.merge_avg('avg_fuel_rate', stats, stats1, stats2)
         self.merge_avg('temp_avg', stats, stats1, stats2)
+        if 'cons_gasoline' in stats1 or 'cons_gasoline' in stats2:
+            stats['cons_gasoline'] = stats1.get('cons_gasoline', 0) + stats2.get('cons_gasoline', 0)
+        if 'cons_energy' in stats1 or 'cons_energy' in stats2:
+            stats['cons_energy'] = stats1.get('cons_energy', 0) + stats2.get('cons_energy', 0)
 
         return stats
 
     @staticmethod
     def merge_avg(name, stats, stats1, stats2):
-        if stats1.get(name) and stats2.get(name):
-            stats[name] = (stats1[name] + stats2[name]) / 2
-        elif stats1.get(name):
+        if name in stats1 and name in stats2:
+            cnt1, cnt2 = stats1.get('cnt', 0), stats2.get('cnt', 0)
+            stats[name] = (stats1[name] * cnt1 + stats2[name] * cnt2) / (cnt1 + cnt2)
+        elif name in stats1:
             stats[name] = stats1[name]
-        elif stats2.get(name):
+        elif name in stats2:
             stats[name] = stats2[name]
 
     def cycle_to_events(self, cycle: Cycle, measurement):
