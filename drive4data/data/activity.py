@@ -1,4 +1,5 @@
 import itertools
+import logging
 import sys
 from datetime import timedelta
 from typing import List
@@ -56,7 +57,7 @@ class InfluxActivityDetection(MergeMixin, ActivityDetection):
     def cycles_to_timeseries(self, cycles: List[Cycle], measurement):
         return itertools.chain.from_iterable(self.cycle_to_events(cycle, measurement) for cycle in cycles)
 
-    def cycle_to_events(self, cycle: Cycle, measurement):
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
         for time, is_start in [(cycle.start['time'], True), (cycle.end['time'], False)]:
             yield {
                 'measurement': measurement,
@@ -145,7 +146,7 @@ class ValueMemoryMixin(object):
 
         return stats
 
-    def cycle_to_events(self, cycle: Cycle, measurement):
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
         data = {}
         for mem in cycle.stats['memorized_values'].values():
             if mem.save_first:
@@ -155,3 +156,38 @@ class ValueMemoryMixin(object):
         for event in super().cycle_to_events(cycle, measurement):
             event['fields'].update(data)
             yield event
+
+
+class MergeDebugMixin(object):
+    logger = logging.getLogger("MergeDebugMixin")
+
+    def __init__(self, **kwargs):
+        self.merges = []
+        super().__init__(**kwargs)
+
+    def can_merge(self, last_cycle, new_cycle: Cycle):
+        can_merge = super().can_merge(last_cycle, new_cycle)
+        if can_merge:
+            # merge = [{
+            #              "type": type,
+            #              "time": event["time"],
+            #              **event["tags"],
+            #              **event["fields"]
+            #          } for type, event in zip(["a_start", "a_end", "b_start", "b_end"],
+            #                                   itertools.chain(self.cycle_to_events(last_cycle),
+            #                                                   self.cycle_to_events(new_cycle)))]
+            last_start, last_end = self.extract_cycle_time(last_cycle)
+            new_start, new_end = self.extract_cycle_time(new_cycle)
+            length_a = (last_end - last_start) * TO_SECONDS[self.epoch] / TO_SECONDS['m']
+            length_b = (new_end - new_start) * TO_SECONDS[self.epoch] / TO_SECONDS['m']
+            gap = (new_start - last_end) * TO_SECONDS[self.epoch] / TO_SECONDS['m']
+            length_merged = (new_end - last_start) * TO_SECONDS[self.epoch] / TO_SECONDS['m']
+            # self.logger.info(__("Merging cycles with lengths ({:,.2f}min, {:,.2f}min) and gap of {:,.2f}min "
+            #                     "to cycle of new length {:,.2f}min\n{}",
+            #                     length_a, length_b, gap, length_merged,
+            #                     tabulate(merge, headers='keys')))
+            # self.merges.append(merge)
+            self.merges.append((length_a, length_b, gap, length_merged,
+                                last_cycle.start.get('hvbatt_soc'), last_cycle.end.get('hvbatt_soc'),
+                                new_cycle.start.get('hvbatt_soc'), new_cycle.end.get('hvbatt_soc')))
+        return can_merge

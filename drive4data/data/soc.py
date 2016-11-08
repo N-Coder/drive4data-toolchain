@@ -48,7 +48,7 @@ class SoCMixin(object):
         stats['soc'] = stats1['soc'].merge(stats2['soc'])
         return stats
 
-    def cycle_to_events(self, cycle: Cycle, measurement):
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
         soc = cycle.stats["soc"]
         data = {
             'soc_start': self.rescale_soc(soc.first) if soc.first else None,

@@ -1,7 +1,8 @@
+import csv
 import logging
 from datetime import timedelta
 
-from drive4data.data.activity import InfluxActivityDetection
+from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
@@ -13,13 +14,14 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 
-class ChargeCycleDerivDetection(SoCMixin, InfluxActivityDetection):
+class ChargeCycleDerivDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
     MAX_DELAY = timedelta(minutes=10) / timedelta(seconds=1)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__('soc_diff', max_merge_gap=timedelta(hours=2), *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(attr='soc_diff', max_merge_gap=timedelta(hours=2), **kwargs)
 
     def __call__(self, cycle_samples):
+        cycle_samples = (sample for sample in cycle_samples if sample['hvbatt_soc'] < 200)
         cycle_samples = smooth(cycle_samples, 'hvbatt_soc', 'soc', alpha=0.999)
         cycle_samples = differentiate(cycle_samples, 'soc', label_diff='soc_diff_raw',
                                       attr_time='time', delta_time=TO_SECONDS['h'] / TO_SECONDS['n'])
@@ -35,13 +37,12 @@ class ChargeCycleDerivDetection(SoCMixin, InfluxActivityDetection):
                self.get_duration(previous, sample) > self.MAX_DELAY
 
 
-class ChargeCycleCurrentDetection(SoCMixin, InfluxActivityDetection):
+class ChargeCycleCurrentDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
     MAX_DELAY = timedelta(hours=1) / timedelta(seconds=1)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__('charger_accurrent', max_merge_gap=timedelta(minutes=30),
-                         min_cycle_duration=timedelta(minutes=10),
-                         *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(attr='charger_accurrent', max_merge_gap=timedelta(minutes=30),
+                         min_cycle_duration=timedelta(minutes=10), **kwargs)
 
     def is_start(self, sample, previous):
         return sample[self.attr] > 4
@@ -81,3 +82,10 @@ def preprocess_cycles(client):
             detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "charge_cycles"),
             tags={'detector': detector.attr},
             time_precision=client.time_epoch)
+
+        for name, hist in [('merges', detector.merges)]:
+            with open('out/hist_charge_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(hist)
+
+        detector.merges = []

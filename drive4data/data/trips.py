@@ -3,7 +3,7 @@ import logging
 import math
 from datetime import timedelta
 
-from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
+from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
@@ -105,7 +105,7 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
         elif name in stats2:
             stats[name] = stats2[name]
 
-    def cycle_to_events(self, cycle: Cycle, measurement):
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
         for event in super().cycle_to_events(cycle, measurement):
             for key in 'est_distance', 'avg_current', 'avg_voltage', 'avg_fuel_rate', 'temp_avg', 'cons_gasoline', \
                        'cons_energy':
@@ -114,7 +114,7 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
             yield event
 
 
-class TripDetectionHistogram(TripDetection):
+class TripDetectionHistogram(MergeDebugMixin, TripDetection):
     def __init__(self, **kwargs):
         self.hist_metrics_odo = []
         self.hist_metrics_soc = []
@@ -122,7 +122,7 @@ class TripDetectionHistogram(TripDetection):
         self.hist_distance = []
         super().__init__(**kwargs)
 
-    def cycle_to_events(self, cycle: Cycle, measurement):
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
         metrics_odo = cycle.stats['memorized_values']["veh_odometer"]
         self.hist_metrics_odo.append(metrics_odo.get_time_gap(cycle, self.get_duration, missing_value="X"))
         metrics_soc = cycle.stats["soc"]
@@ -158,8 +158,9 @@ def preprocess_trips(client):
             time_precision=client.time_epoch)
 
         for name, hist in [('odo', detector.hist_metrics_odo), ('soc', detector.hist_metrics_soc),
-                           ('temp', detector.hist_metrics_temp), ('dist', detector.hist_distance)]:
-            with open('out/hist_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+                           ('temp', detector.hist_metrics_temp), ('dist', detector.hist_distance),
+                           ('merges', detector.merges)]:
+            with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerows(hist)
 
@@ -167,3 +168,4 @@ def preprocess_trips(client):
         detector.hist_metrics_soc = []
         detector.hist_metrics_temp = []
         detector.hist_distance = []
+        detector.merges = []
