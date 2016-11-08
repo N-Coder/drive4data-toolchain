@@ -1,17 +1,17 @@
 import copy
 import csv
 import logging
+import math
 from datetime import datetime
 from datetime import timedelta
-
-from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
-from iss4e.db.influxdb import TO_SECONDS
-from iss4e.util import BraceMessage as __
-from iss4e.util import progress
 
 import webike
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
 from drive4data.data.soc import SoCMixin
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.db.influxdb import TO_SECONDS
+from iss4e.util import BraceMessage as __
+from iss4e.util import progress
 from webike.data import Trips
 from webike.util.activity import Cycle
 from webike.util.plot import to_hour_bin
@@ -77,10 +77,11 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
                 accumulator['cons_gasoline'] += interval * new_sample['fuel_rate']
 
         # temp_avg
-        if 'temp_avg' in accumulator:
-            accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
-        else:
-            accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
+        if new_sample.get('outside_air_temp') and math.isfinite(new_sample['outside_air_temp']):
+            if 'temp_avg' in accumulator:
+                accumulator['temp_avg'] = (accumulator['temp_avg'] + new_sample['outside_air_temp']) / 2
+            else:
+                accumulator['temp_avg'] = float(new_sample['outside_air_temp'])
 
         accumulator['__prev'] = new_sample
         return accumulator
@@ -93,14 +94,19 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
             stats['cons_energy'] = stats1.get('cons_energy', 0) + stats2.get('cons_energy', 0)
         if 'cons_gasoline' in stats1 or 'cons_gasoline' in stats2:
             stats['cons_gasoline'] = stats1.get('cons_gasoline', 0) + stats2.get('cons_gasoline', 0)
-        stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
+        if stats1.get('temp_avg') and stats2.get('temp_avg'):
+            stats['temp_avg'] = (stats1['temp_avg'] + stats2['temp_avg']) / 2
+        elif stats1.get('temp_avg'):
+            stats['temp_avg'] = stats1['temp_avg']
+        elif stats2.get('temp_avg'):
+            stats['temp_avg'] = stats2['temp_avg']
 
         return stats
 
     def cycle_to_events(self, cycle: Cycle, measurement):
         for event in super().cycle_to_events(cycle, measurement):
             for key in 'est_distance', 'cons_energy', 'cons_gasoline', 'temp_avg':
-                if key in cycle.stats:
+                if key in cycle.stats and math.isfinite(cycle.stats[key]):
                     event['fields'][key] = float(cycle.stats[key])
             yield event
 

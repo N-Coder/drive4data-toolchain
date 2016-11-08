@@ -4,7 +4,6 @@ from datetime import timedelta
 from typing import List
 
 from iss4e.db.influxdb import TO_SECONDS
-
 from webike.util.activity import ActivityDetection, Cycle, MergeMixin
 
 
@@ -67,7 +66,7 @@ class InfluxActivityDetection(MergeMixin, ActivityDetection):
                 },
                 'fields': {
                     'duration': int(cycle.end['time'] - cycle.start['time']),
-                    'started': is_start,
+                    'started': "true" if is_start else "false",
                     'discarded': cycle.reject_reason,
                     'value': float(cycle.stats['avg']),
                     'sample_count': int(cycle.stats['cnt'])
