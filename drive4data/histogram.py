@@ -3,11 +3,10 @@ import logging
 import os
 from contextlib import ExitStack, closing
 
+import webike
+from drive4data.graph import trips
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.util.config import load_config
-
-import webike
-from drive4data.data import trips
 from webike.data import Trips
 
 __author__ = "Niko Fink"
