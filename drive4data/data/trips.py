@@ -107,7 +107,8 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
 
     def cycle_to_events(self, cycle: Cycle, measurement):
         for event in super().cycle_to_events(cycle, measurement):
-            for key in 'est_distance', 'avg_current', 'avg_voltage', 'avg_fuel_rate', 'temp_avg':
+            for key in 'est_distance', 'avg_current', 'avg_voltage', 'avg_fuel_rate', 'temp_avg', 'cons_gasoline', \
+                       'cons_energy':
                 if key in cycle.stats and math.isfinite(cycle.stats[key]):
                     event['fields'][key] = float(cycle.stats[key])
             yield event

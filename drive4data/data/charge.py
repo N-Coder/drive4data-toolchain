@@ -70,7 +70,7 @@ def preprocess_cycles(client):
         "samples",
         fields="time, hvbatt_soc, charger_accurrent, participant",
         batch_size=500000,
-        where="hvbatt_soc < 200 AND charger_accurrent > 0")
+        where="hvbatt_soc < 200 OR charger_accurrent > 0")
     for nr, (series, iter) in enumerate(res):
         logger.info(__("#{}: {}", nr, series))
         cycles_curr, cycles_curr_disc = detector(progress(iter))
