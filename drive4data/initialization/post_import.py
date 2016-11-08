@@ -21,6 +21,8 @@ FIELDNAMES = ['time', 'key', 'first', 'last', 'duration', 'min_soc', 'max_soc', 
               'count_ischarging', 'count_maf', 'count_motorvoltages', 'count_outside_air_temp', 'count_reltime',
               'count_source', 'count_veh_odometer', 'count_veh_speed', 'count_vin_1', 'count_vin_2', 'count_vin_3',
               'count_vin_digit', 'count_vin_frame1', 'count_vin_frame2', 'count_vin_index', 'count_car_id']
+for i in range(0, 100, 5):
+    FIELDNAMES.append("count_soc_{}".format(i))
 
 
 def extract_res(res, data, func):
@@ -61,18 +63,38 @@ def analyze(cred):
             extract_res(res_range, data, lambda row: ('min_soc', row['min_soc']))
             extract_res(res_range, data, lambda row: ('max_soc', row['max_soc']))
 
+            for i in range(0, 100, 5):
+                a, b = i, i + 5
+                if b == 100:
+                    b = 101
+                logger.info(__("Querying SoC values for range ({}, {})", a, b))
+                name = "count_soc_{a}".format(a=a)
+                res_soc_cnt = client.query(
+                    "SELECT COUNT(hvbatt_soc) AS {name} FROM samples "
+                    "WHERE hvbatt_soc >= {a} AND hvbatt_soc < {b} "
+                    "GROUP BY participant".format(name=name, a=a, b=b))
+                extract_res(res_soc_cnt, data, lambda row: (name, row[name]))
+
         with open(SAVE_FILE, "wb+") as f:
             pickle.dump(data, f)
 
-    return ({
-                'key': k,
-                'first': v.get('first') / 86400 + 25569,  # to libreoffice timestamp
-                'last': v.get('last') / 86400 + 25569,
-                'duration': (v.get('last') - v.get('first')) / 86400,
-                'min_soc': v.get('min_soc'),
-                'max_soc': v.get('max_soc'),
-                **v.get('counts', {})
-            } for k, v in data.items())
+    return (data_to_row(k, v) for k, v in data.items())
+
+
+def data_to_row(key, value):
+    row = {
+        'key': key,
+        'first': value.get('first', 0) / 86400 + 25569,  # to libreoffice timestamp
+        'last': value.get('last', 0) / 86400 + 25569,
+        'duration': (value.get('last', 0) - value.get('first', 0)) / 86400,
+        'min_soc': value.get('min_soc', -1),
+        'max_soc': value.get('max_soc', -1)
+    }
+    row.update(value.get('counts', {}))
+    for i in range(0, 100, 5):
+        name = "count_soc_{}".format(i)
+        row[name] = value.get(name, 0)
+    return row
 
 
 def dump(rows, to_file, fieldnames=FIELDNAMES):

@@ -1,8 +1,7 @@
 from datetime import datetime
 
-from iss4e.db.influxdb import TO_SECONDS
-
 from drive4data.data.activity import ValueMemory
+from iss4e.db.influxdb import TO_SECONDS
 from webike.util.activity import Cycle
 
 
@@ -11,18 +10,18 @@ def _d(date):
 
 
 SCALING_FACTORS = {
-    '1': [(None, 15.30, 86.90)],
-    '2': [(None, 18.30, 92.10)],
-    '3': [(None, 18.90, 100.00)],
-    '4': [(_d('2014-01-24 15:57:49'), 18.04, 86.67),
-          (None, 0.00, 100.00)],
-    '5': [(None, 5.50, 89.00)],
-    '6': [(_d('2016-02-25 01:55:28'), 0.00, 100.00),
-          (None, 12.20, 100.00)],
-    '7': [(None, 9.10, 100.00)],
-    '8': [(None, 0.00, 100.00)],
-    '9': [(None, 18.80, 100.00)],
-    '10': [(None, 13.50, 100.00)]
+    '1': [(None, 15, 85)],
+    '2': [(None, 15, 85)],
+    '3': [(None, 0, 100)],
+    '4': [(_d('2014-01-24 15:57:49'), 15, 85),
+          (None, 0, 100)],
+    '5': [(None, 15, 85)],
+    '6': [(_d('2016-02-25 01:55:28'), 0, 100),
+          (None, 0, 100)],
+    '7': [(None, 0, 100)],
+    '8': [(None, 0, 100)],
+    '9': [(None, 0, 100)],
+    '10': [(None, 0, 100)]
 }
 
 
