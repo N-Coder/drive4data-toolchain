@@ -4,9 +4,11 @@ import os
 from contextlib import ExitStack, closing
 
 import webike
+from drive4data.graph import charge
 from drive4data.graph import trips
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.util.config import load_config
+from webike.data import ChargeCycle
 from webike.data import Trips
 
 __author__ = "Niko Fink"
@@ -29,6 +31,9 @@ def main():
 
         trip_hist_data = trips.extract_hist(client)
         webike.data.Trips.plot_trips(trip_hist_data)
+
+        cycle_hist_data = charge.extract_hist(client)
+        webike.data.ChargeCycle.plot_charge_cycles(cycle_hist_data)
 
 
 if __name__ == "__main__":
