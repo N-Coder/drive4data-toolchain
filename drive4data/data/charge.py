@@ -1,13 +1,12 @@
 import logging
 from datetime import timedelta
 
+from drive4data.data.activity import InfluxActivityDetection
+from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
 from iss4e.util import progress
 from iss4e.util.math import differentiate, smooth
-
-from drive4data.data.activity import InfluxActivityDetection
-from drive4data.data.soc import SoCMixin
 from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
@@ -41,7 +40,7 @@ class ChargeCycleCurrentDetection(SoCMixin, InfluxActivityDetection):
 
     def __init__(self, *args, **kwargs):
         super().__init__('charger_accurrent', max_merge_gap=timedelta(minutes=30),
-                         min_cycle_duration=timedelta(hours=1),
+                         min_cycle_duration=timedelta(minutes=10),
                          *args, **kwargs)
 
     def is_start(self, sample, previous):
@@ -51,13 +50,17 @@ class ChargeCycleCurrentDetection(SoCMixin, InfluxActivityDetection):
         return sample[self.attr] < 4 or self.get_duration(previous, sample) > self.MAX_DELAY
 
     def check_reject_reason(self, cycle: Cycle):
-        reason = super().check_reject_reason(cycle)
-        if reason:
-            return reason
-        elif (cycle.end['hvbatt_soc'] - cycle.start['hvbatt_soc']) < 10:
+        if (cycle.end['hvbatt_soc'] - cycle.start['hvbatt_soc']) < 10:
             return "delta_soc<10%"
+        return super().check_reject_reason(cycle)
+
+    def can_merge(self, last_cycle, new_cycle: Cycle):
+        if super().can_merge(last_cycle, new_cycle):
+            soc_change = new_cycle.start['hvbatt_soc'] - last_cycle.end['hvbatt_soc']
+            if soc_change < -2:
+                return False
         else:
-            return None
+            return False
 
 
 def preprocess_cycles(client):
