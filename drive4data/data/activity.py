@@ -62,12 +62,13 @@ class InfluxActivityDetection(MergeMixin, ActivityDetection):
                 'measurement': measurement,
                 'time': time,
                 'tags': {
-                    'participant': cycle.start['participant']
+                    'participant': cycle.start['participant'],
+                    'discarded': bool(cycle.reject_reason)
                 },
                 'fields': {
                     'duration': int(cycle.end['time'] - cycle.start['time']),
-                    'started': "true" if is_start else "false",
-                    'discarded': cycle.reject_reason,
+                    'started': is_start,
+                    'discarded_reason': cycle.reject_reason,
                     'value': float(cycle.stats['avg']),
                     'sample_count': int(cycle.stats['cnt'])
                 }
