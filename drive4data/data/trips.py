@@ -25,7 +25,7 @@ def get_current(sample):
     return current
 
 
-class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
+class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, **kwargs):
@@ -114,32 +114,9 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
             yield event
 
 
-class TripDetectionHistogram(MergeDebugMixin, TripDetection):
-    def __init__(self, **kwargs):
-        self.hist_metrics_odo = []
-        self.hist_metrics_soc = []
-        self.hist_metrics_temp = []
-        self.hist_distance = []
-        super().__init__(**kwargs)
-
-    def cycle_to_events(self, cycle: Cycle, measurement=""):
-        metrics_odo = cycle.stats['memorized_values']["veh_odometer"]
-        self.hist_metrics_odo.append(metrics_odo.get_time_gap(cycle, self.get_duration, missing_value="X"))
-        metrics_soc = cycle.stats["soc"]
-        self.hist_metrics_soc.append(metrics_soc.get_time_gap(cycle, self.get_duration, missing_value="X"))
-        metrics_temp = cycle.stats['memorized_values']["outside_air_temp"]
-        self.hist_metrics_temp.append(metrics_temp.get_time_gap(cycle, self.get_duration, missing_value="X"))
-
-        if metrics_odo.first_value() and metrics_odo.last_value():
-            self.hist_distance.append(
-                (metrics_odo.first_value(), metrics_odo.last_value(), cycle.stats['est_distance']))
-
-        return super().cycle_to_events(cycle, measurement)
-
-
 def preprocess_trips(client):
     logger.info("Preprocessing trips")
-    detector = TripDetectionHistogram(time_epoch=client.time_epoch)
+    detector = TripDetection(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
         fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
@@ -157,15 +134,9 @@ def preprocess_trips(client):
             tags={'detector': detector.attr},
             time_precision=client.time_epoch)
 
-        for name, hist in [('odo', detector.hist_metrics_odo), ('soc', detector.hist_metrics_soc),
-                           ('temp', detector.hist_metrics_temp), ('dist', detector.hist_distance),
-                           ('merges', detector.merges)]:
+        for name, hist in [('merges', detector.merges)]:
             with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerows(hist)
 
-        detector.hist_metrics_odo = []
-        detector.hist_metrics_soc = []
-        detector.hist_metrics_temp = []
-        detector.hist_distance = []
         detector.merges = []
