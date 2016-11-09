@@ -79,7 +79,6 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor):
     futures = list(futures)
     logger.debug("Tasks done")
     futures.sort(lambda a, b: a[0] - b[0])
-    futures = [(nr, len(cycles), len(cycles_disc)) for nr, cycles, cycles_disc in futures]
     logger.info(__("Detected charge cycles:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
 
 
@@ -102,4 +101,4 @@ def preprocess_cycle(client, nr=None, series=None, iter=None):
             writer = csv.writer(csvfile)
             writer.writerows(hist)
 
-    return nr, cycles, cycles_disc
+    return nr, len(cycles), len(cycles_disc)
