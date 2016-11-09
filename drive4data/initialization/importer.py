@@ -14,13 +14,12 @@ from os.path import join
 
 import geohash
 import pytz
+from drive4data.initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.util import BraceMessage as __
 from iss4e.util import SafeFileWalker
 from iss4e.util import progress
 from more_itertools import peekable
-
-from drive4data.initialization.pre_import import FW3I_VALUES, FW3I_FOLDER
 
 __author__ = "Niko Fink"
 
@@ -63,7 +62,7 @@ class Importer:
             self.logger.info("Performing cold start")
 
             with self.new_client() as client:
-                client.delete_series(measurement=self.measurement)
+                client.query("DROP MEASUREMENT {}".format(self.measurement))
 
             files = chunkify([join(root, sub) for sub in os.listdir(root)], self.processes)
             iters = list([SafeFileWalker(f) for f in files])
@@ -77,7 +76,8 @@ class Importer:
         self.logger.info("Iterators loaded, starting pool")
         with Pool(processes=self.processes) as pool:
             row_count = pool.map(self.walk_files, [(nr, it) for (nr, it) in enumerate(iters)], chunksize=1)
-        self.logger.info(__("Imported {} = {} rows", row_count, sum(row_count)))
+        imported = sum(row_count)  # consuming the iterator blocks the main thread until everything is done
+        self.logger.info(__("Imported {} = {} rows", row_count, imported))
 
     def walk_files(self, args):
         nr, files = args

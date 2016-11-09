@@ -26,9 +26,9 @@ def main():
         client = InfluxDBClient(batched=False, time_epoch=TIME_EPOCH, **cred)
         stack.enter_context(closing(client))
 
-        client.delete_series(measurement="trips")
+        client.query("DROP MEASUREMENT trips")
         preprocess_trips(client, executor)
-        client.delete_series(measurement="charge_cycles")
+        client.query("DROP MEASUREMENT charge_cycles")
         preprocess_cycles(client, executor)
 
 
