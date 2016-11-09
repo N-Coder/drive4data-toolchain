@@ -1,7 +1,6 @@
 from datetime import datetime
 
 from drive4data.data.activity import ValueMemory
-from iss4e.db.influxdb import TO_SECONDS
 from webike.util.activity import Cycle
 
 
@@ -59,5 +58,6 @@ class SoCMixin(object):
             yield event
 
     def rescale_soc(self, sample):
-        dt = datetime.fromtimestamp(sample['time'] * TO_SECONDS[self.epoch])
-        return rescale_soc(dt, sample['participant'], sample['hvbatt_soc'])
+        return sample['hvbatt_soc']
+        # dt = datetime.fromtimestamp(sample['time'] * TO_SECONDS[self.epoch])
+        # return rescale_soc(dt, sample['participant'], sample['hvbatt_soc'])
