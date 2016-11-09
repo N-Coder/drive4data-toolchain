@@ -1,13 +1,16 @@
 import csv
 import logging
+from concurrent.futures import Executor
 from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
 from iss4e.util import progress
 from iss4e.util.math import differentiate, smooth
+from tabulate import tabulate
 from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
@@ -64,28 +67,39 @@ class ChargeCycleCurrentDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetec
             return False
 
 
-def preprocess_cycles(client):
+def preprocess_cycles(client: InfluxDBClient, executor: Executor):
     logger.info("Preprocessing charge cycles")
-    detector = ChargeCycleCurrentDetection(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
         fields="time, hvbatt_soc, charger_accurrent, participant",
         batch_size=500000,
         where="hvbatt_soc < 200 OR charger_accurrent > 0")
-    for nr, (series, iter) in enumerate(res):
-        logger.info(__("#{}: {}", nr, series))
-        cycles_curr, cycles_curr_disc = detector(progress(iter))
+    futures = executor.map(preprocess_cycle, [(client, nr, series, iter) for nr, (series, iter) in enumerate(res)])
+    logger.debug("Tasks started, waiting for results...")
+    futures = list(futures)
+    logger.debug("Tasks done")
+    futures.sort(lambda a, b: a[0] - b[0])
+    futures = [(nr, len(cycles), len(cycles_disc)) for nr, cycles, cycles_disc in futures]
+    logger.info(__("Detected charge cycles:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
 
-        logger.info(__("Writing {} + {} = {} cycles", len(cycles_curr), len(cycles_curr_disc),
-                       len(cycles_curr) + len(cycles_curr_disc)))
-        client.write_points(
-            detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "charge_cycles"),
-            tags={'detector': detector.attr},
-            time_precision=client.time_epoch)
 
-        for name, hist in [('merges', detector.merges)]:
-            with open('out/hist_charge_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(hist)
+def preprocess_cycle(client, nr=None, series=None, iter=None):
+    if not nr:
+        client, nr, series, iter = client
+    logger.info(__("#{}: {}", nr, series))
+    detector = ChargeCycleCurrentDetection(time_epoch=client.time_epoch)
+    cycles, cycles_disc = detector(progress(iter))
 
-        detector.merges = []
+    logger.info(__("Writing {} + {} = {} cycles", len(cycles), len(cycles_disc),
+                   len(cycles) + len(cycles_disc)))
+    client.write_points(
+        detector.cycles_to_timeseries(cycles + cycles_disc, "charge_cycles"),
+        tags={'detector': detector.attr},
+        time_precision=client.time_epoch)
+
+    for name, hist in [('merges', detector.merges)]:
+        with open('out/hist_charge_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(hist)
+
+    return nr, cycles, cycles_disc

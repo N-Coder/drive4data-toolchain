@@ -1,13 +1,16 @@
 import csv
 import logging
 import math
+from concurrent.futures import Executor
 from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
 from iss4e.util import progress
+from tabulate import tabulate
 from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
@@ -114,29 +117,40 @@ class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityD
             yield event
 
 
-def preprocess_trips(client):
+def preprocess_trips(client: InfluxDBClient, executor: Executor):
     logger.info("Preprocessing trips")
-    detector = TripDetection(time_epoch=client.time_epoch)
     res = client.stream_series(
         "samples",
         fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
                "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
         batch_size=500000,
         where="veh_speed > 0")
-    for nr, (series, iter) in enumerate(res):
-        logger.info(__("#{}: {}", nr, series))
-        cycles_curr, cycles_curr_disc = detector(progress(iter))
+    futures = executor.map(preprocess_trip, [(client, nr, series, iter) for nr, (series, iter) in enumerate(res)])
+    logger.debug("Tasks started, waiting for results...")
+    futures = list(futures)
+    logger.debug("Tasks done")
+    futures.sort(lambda a, b: a[0] - b[0])
+    futures = [(nr, len(cycles), len(cycles_disc)) for nr, cycles, cycles_disc in futures]
+    logger.info(__("Detected trips:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
 
-        logger.info(__("Writing {} + {} = {} trips", len(cycles_curr), len(cycles_curr_disc),
-                       len(cycles_curr) + len(cycles_curr_disc)))
-        client.write_points(
-            detector.cycles_to_timeseries(cycles_curr + cycles_curr_disc, "trips"),
-            tags={'detector': detector.attr},
-            time_precision=client.time_epoch)
 
-        for name, hist in [('merges', detector.merges)]:
-            with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(hist)
+def preprocess_trip(client, nr=None, series=None, iter=None):
+    if not nr:
+        client, nr, series, iter = client
+    logger.info(__("#{}: {}", nr, series))
+    detector = TripDetection(time_epoch=client.time_epoch)
+    cycles, cycles_disc = detector(progress(iter, logger=logger))
 
-        detector.merges = []
+    logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
+                   len(cycles) + len(cycles_disc)))
+    client.write_points(
+        detector.cycles_to_timeseries(cycles + cycles_disc, "trips"),
+        tags={'detector': detector.attr},
+        time_precision=client.time_epoch)
+
+    for name, hist in [('merges', detector.merges)]:
+        with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(hist)
+
+    return nr, cycles, cycles_disc
