@@ -78,7 +78,7 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor):
     logger.debug("Tasks started, waiting for results...")
     futures = list(futures)
     logger.debug("Tasks done")
-    futures.sort(lambda a, b: a[0] - b[0])
+    futures.sort(key=lambda a: a[0])
     logger.info(__("Detected charge cycles:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
 
 
