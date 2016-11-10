@@ -12,12 +12,12 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 TIME_EPOCH = 'n'
-DRY_RUN = True
 
 
 def main():
     config = load_config()
     cred = config["drive4data.influx"]
+    dry_run = bool(config.get("dry_run", False))
 
     os.makedirs("out", exist_ok=True)
     with ExitStack() as stack:
@@ -27,12 +27,12 @@ def main():
         client = InfluxDBClient(batched=False, time_epoch=TIME_EPOCH, **cred)
         stack.enter_context(closing(client))
 
-        if not DRY_RUN:
+        if not dry_run:
             client.drop_measurement("trips")
-        preprocess_trips(client, executor)
-        if not DRY_RUN:
+        preprocess_trips(client, executor, dry_run=dry_run)
+        if not dry_run:
             client.drop_measurement("charge_cycles")
-        preprocess_cycles(client, executor)
+        preprocess_cycles(client, executor, dry_run=dry_run)
 
 
 if __name__ == "__main__":

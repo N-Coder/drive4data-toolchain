@@ -6,11 +6,9 @@ from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
-from drive4data.preprocess import DRY_RUN
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __, async_progress
-from iss4e.util import progress
 from iss4e.util.math import differentiate, smooth
 from tabulate import tabulate
 from webike.util.activity import Cycle
@@ -109,7 +107,7 @@ class ChargeCycleACHVPowerDetection(ChargeCycleAttrDetection):
         return sample[self.attr] <= 0 or super().is_end(sample, previous)
 
 
-def preprocess_cycles(client: InfluxDBClient, executor: Executor):
+def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False):
     logger.info("Preprocessing charge cycles")
 
     manager = multiprocessing.Manager()
@@ -125,22 +123,23 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor):
         if attr not in fields:
             fields.append(attr)
         res = client.stream_series("samples", fields=fields, where=where, batch_size=500000)
-        futures += [executor.submit(preprocess_cycle, client, nr, series, detector, iter, queue)
+        futures += [executor.submit(preprocess_cycle, client, nr, series, detector, iter, queue, dry_run)
                     for nr, (series, iter) in enumerate(res)]
 
     logger.debug("Tasks started, waiting for results...")
     async_progress(futures, queue)
-    futures = list(futures)
+    data = [f.result() for f in futures]
     logger.debug("Tasks done")
-    futures.sort(key=lambda a: a[0:1])
-    logger.info(__("Detected charge cycles:\n{}", tabulate(futures, headers=["attr", "#", "cycles", "cycles_disc"])))
+    data.sort(key=lambda a: a[0:1])
+    logger.info(__("Detected charge cycles:\n{}", tabulate(data, headers=["attr", "#", "cycles", "cycles_disc"])))
 
 
-def preprocess_cycle(client, nr, series, detector, iter, queue):
+def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
     logger.info(__("Processing #{}: {} {}", nr, detector.attr, series))
-    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    # cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    cycles, cycles_disc = [], []
 
-    if not DRY_RUN:
+    if not dry_run:
         logger.info(__("Writing {} + {} = {} cycles", len(cycles), len(cycles_disc),
                        len(cycles) + len(cycles_disc)))
         client.write_points(

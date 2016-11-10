@@ -7,11 +7,10 @@ from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
-from drive4data.preprocess import DRY_RUN
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
-from iss4e.util import progress, async_progress
+from iss4e.util import async_progress
 from tabulate import tabulate
 from webike.util.activity import Cycle
 
@@ -119,7 +118,7 @@ class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityD
             yield event
 
 
-def preprocess_trips(client: InfluxDBClient, executor: Executor):
+def preprocess_trips(client: InfluxDBClient, executor: Executor, dry_run=False):
     logger.info("Preprocessing trips")
     res = client.stream_series(
         "samples",
@@ -129,22 +128,23 @@ def preprocess_trips(client: InfluxDBClient, executor: Executor):
         where="veh_speed > 0")
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    futures = [executor.submit(preprocess_trip, client, nr, series, iter, queue)
+    futures = [executor.submit(preprocess_trip, client, nr, series, iter, queue, dry_run)
                for nr, (series, iter) in enumerate(res)]
     logger.debug("Tasks started, waiting for results...")
     async_progress(futures, queue)
-    futures = list(futures)
+    data = [f.result() for f in futures]
     logger.debug("Tasks done")
-    futures.sort(key=lambda a: a[0])
-    logger.info(__("Detected trips:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
+    data.sort(key=lambda a: a[0])
+    logger.info(__("Detected trips:\n{}", tabulate(data, headers=["#", "cycles", "cycles_disc"])))
 
 
-def preprocess_trip(client, nr, series, iter, queue):
+def preprocess_trip(client, nr, series, iter, queue, dry_run=False):
     logger.info(__("Processing #{}: {}", nr, series))
     detector = TripDetection(time_epoch=client.time_epoch)
-    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    # cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    cycles, cycles_disc = [], []
 
-    if not DRY_RUN:
+    if not dry_run:
         logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
                        len(cycles) + len(cycles_disc)))
         client.write_points(
