@@ -29,9 +29,9 @@ LINEAR_FACTORS = {
 def rescale_soc(time, participant, soc_value):
     for end, poly in LINEAR_FACTORS[participant]:
         if not end or end >= time:
-            return poly(soc_value)
+            return float(poly(soc_value))
     warnings.warn("could not find a soc transformation for participant {} and time {}".format(participant, time))
-    return soc_value
+    return float(soc_value)
 
 
 class SoCMixin(object):
