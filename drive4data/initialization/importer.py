@@ -62,7 +62,7 @@ class Importer:
             self.logger.info("Performing cold start")
 
             with self.new_client() as client:
-                client.query("DROP MEASUREMENT {}".format(self.measurement))
+                client.drop_measurement(self.measurement)
 
             files = chunkify([join(root, sub) for sub in os.listdir(root)], self.processes)
             iters = list([SafeFileWalker(f) for f in files])
