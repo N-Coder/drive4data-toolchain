@@ -1,5 +1,7 @@
+import warnings
 from datetime import datetime
 
+import numpy as np
 from drive4data.data.activity import ValueMemory
 from webike.util.activity import Cycle
 
@@ -8,28 +10,28 @@ def _d(date):
     return datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
 
 
-SCALING_FACTORS = {
-    '1': [(None, 15, 85)],
-    '2': [(None, 15, 85)],
-    '3': [(None, 0, 100)],
-    '4': [(_d('2014-01-24 15:57:49'), 15, 85),
-          (None, 0, 100)],
-    '5': [(None, 15, 85)],
-    '6': [(_d('2016-02-25 01:55:28'), 0, 100),
-          (None, 0, 100)],
-    '7': [(None, 0, 100)],
-    '8': [(None, 0, 100)],
-    '9': [(None, 0, 100)],
-    '10': [(None, 0, 100)]
+LINEAR_FACTORS = {
+    '1': [(None, np.poly1d((1.525, -34)))],
+    '2': [(None, np.poly1d((1.525, -34)))],
+    '3': [(None, np.poly1d((1, 0)))],
+    '4': [(_d('2014-01-24 15:57:49'), np.poly1d((1.525, -34))),
+          (None, np.poly1d((1, 0)))],
+    '5': [(None, np.poly1d((1.525, -34)))],
+    '6': [(_d('2016-02-25 01:55:28'), 1, 0),
+          (None, np.poly1d((1, 0)))],
+    '7': [(None, np.poly1d((1.28, -15)))],
+    '8': [(None, np.poly1d((1, 0)))],
+    '9': [(None, np.poly1d((1, 0)))],
+    '10': [(None, np.poly1d((1, 0)))]
 }
 
 
-def rescale_soc(time, participant=None, soc_value=None):
-    min = max = None
-    for (end, min, max) in SCALING_FACTORS[participant]:
+def rescale_soc(time, participant, soc_value):
+    for end, poly in LINEAR_FACTORS[participant]:
         if not end or end >= time:
-            break
-    return (soc_value - min) / (max - min)
+            return poly(soc_value)
+    warnings.warn("could not find a soc transformation for participant {} and time {}".format(participant, time))
+    return soc_value
 
 
 class SoCMixin(object):
