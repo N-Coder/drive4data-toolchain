@@ -1,5 +1,6 @@
 import csv
 import logging
+import multiprocessing
 from concurrent.futures import Executor
 from datetime import timedelta
 
@@ -7,7 +8,7 @@ from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
-from iss4e.util import BraceMessage as __
+from iss4e.util import BraceMessage as __, async_progress
 from iss4e.util import progress
 from iss4e.util.math import differentiate, smooth
 from tabulate import tabulate
@@ -110,6 +111,8 @@ class ChargeCycleACHVPowerDetection(ChargeCycleAttrDetection):
 def preprocess_cycles(client: InfluxDBClient, executor: Executor):
     logger.info("Preprocessing charge cycles")
 
+    manager = multiprocessing.Manager()
+    queue = manager.Queue()
     futures = []
     for attr, where, detector in [
         ('charger_acvoltage', 'charger_acvoltage>0', ChargeCycleACVoltageDetection(time_epoch=client.time_epoch)),
@@ -121,22 +124,20 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor):
         if attr not in fields:
             fields.append(attr)
         res = client.stream_series("samples", fields=fields, where=where, batch_size=500000)
-        futures += executor.map(preprocess_cycle, [
-            (client, nr, series, detector, iter)
-            for nr, (series, iter) in enumerate(res)])
+        futures += [executor.submit(preprocess_cycle, client, nr, series, detector, iter, queue)
+                    for nr, (series, iter) in enumerate(res)]
 
     logger.debug("Tasks started, waiting for results...")
+    async_progress(futures, queue)
     futures = list(futures)
     logger.debug("Tasks done")
     futures.sort(key=lambda a: a[0:1])
     logger.info(__("Detected charge cycles:\n{}", tabulate(futures, headers=["attr", "#", "cycles", "cycles_disc"])))
 
 
-def preprocess_cycle(client, nr=None, series=None, detector=None, iter=None):
-    if not nr:
-        client, nr, series, detector, iter = client
+def preprocess_cycle(client, nr, series, detector, iter, queue):
     logger.info(__("#{}: {} {}", nr, detector.attr, series))
-    cycles, cycles_disc = detector(progress(iter))
+    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
     logger.info(__("Writing {} + {} = {} cycles", len(cycles), len(cycles_disc),
                    len(cycles) + len(cycles_disc)))

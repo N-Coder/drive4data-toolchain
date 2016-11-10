@@ -1,6 +1,7 @@
 import csv
 import logging
 import math
+import multiprocessing
 from concurrent.futures import Executor
 from datetime import timedelta
 
@@ -9,7 +10,7 @@ from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
-from iss4e.util import progress
+from iss4e.util import progress, async_progress
 from tabulate import tabulate
 from webike.util.activity import Cycle
 
@@ -125,20 +126,22 @@ def preprocess_trips(client: InfluxDBClient, executor: Executor):
                "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
         batch_size=500000,
         where="veh_speed > 0")
-    futures = executor.map(preprocess_trip, [(client, nr, series, iter) for nr, (series, iter) in enumerate(res)])
+    manager = multiprocessing.Manager()
+    queue = manager.Queue()
+    futures = [executor.submit(preprocess_trip, client, nr, series, iter, queue)
+               for nr, (series, iter) in enumerate(res)]
     logger.debug("Tasks started, waiting for results...")
+    async_progress(futures, queue)
     futures = list(futures)
     logger.debug("Tasks done")
     futures.sort(key=lambda a: a[0])
     logger.info(__("Detected trips:\n{}", tabulate(futures, headers=["#", "cycles", "cycles_disc"])))
 
 
-def preprocess_trip(client, nr=None, series=None, iter=None):
-    if not nr:
-        client, nr, series, iter = client
+def preprocess_trip(client, nr, series, iter, queue):
     logger.info(__("#{}: {}", nr, series))
     detector = TripDetection(time_epoch=client.time_epoch)
-    cycles, cycles_disc = detector(progress(iter, logger=logger))
+    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
     logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
                    len(cycles) + len(cycles_disc)))
