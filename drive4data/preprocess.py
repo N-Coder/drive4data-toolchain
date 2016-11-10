@@ -12,6 +12,7 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 TIME_EPOCH = 'n'
+DRY_RUN = True
 
 
 def main():
@@ -26,9 +27,11 @@ def main():
         client = InfluxDBClient(batched=False, time_epoch=TIME_EPOCH, **cred)
         stack.enter_context(closing(client))
 
-        client.drop_measurement("trips")
+        if not DRY_RUN:
+            client.drop_measurement("trips")
         preprocess_trips(client, executor)
-        client.drop_measurement("charge_cycles")
+        if not DRY_RUN:
+            client.drop_measurement("charge_cycles")
         preprocess_cycles(client, executor)
 
 

@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
+from drive4data.preprocess import DRY_RUN
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
@@ -139,20 +140,22 @@ def preprocess_trips(client: InfluxDBClient, executor: Executor):
 
 
 def preprocess_trip(client, nr, series, iter, queue):
-    logger.info(__("#{}: {}", nr, series))
+    logger.info(__("Processing #{}: {}", nr, series))
     detector = TripDetection(time_epoch=client.time_epoch)
     cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
-    logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
-                   len(cycles) + len(cycles_disc)))
-    client.write_points(
-        detector.cycles_to_timeseries(cycles + cycles_disc, "trips"),
-        tags={'detector': detector.attr},
-        time_precision=client.time_epoch)
+    if not DRY_RUN:
+        logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
+                       len(cycles) + len(cycles_disc)))
+        client.write_points(
+            detector.cycles_to_timeseries(cycles + cycles_disc, "trips"),
+            tags={'detector': detector.attr},
+            time_precision=client.time_epoch)
 
-    for name, hist in [('merges', detector.merges)]:
-        with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(hist)
+        for name, hist in [('merges', detector.merges)]:
+            with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(hist)
 
+    logger.info(__("Task #{}: {} completed", nr, series))
     return nr, len(cycles), len(cycles_disc)
