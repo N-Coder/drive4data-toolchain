@@ -60,6 +60,6 @@ class SoCMixin(object):
             yield event
 
     def rescale_soc(self, sample):
-        return sample['hvbatt_soc']
+        return float(sample['hvbatt_soc'])
         # dt = datetime.fromtimestamp(sample['time'] * TO_SECONDS[self.epoch])
         # return rescale_soc(dt, sample['participant'], sample['hvbatt_soc'])
