@@ -8,7 +8,7 @@ from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
-from iss4e.util import BraceMessage as __, async_progress
+from iss4e.util import BraceMessage as __, async_progress, progress
 from iss4e.util.math import differentiate, smooth
 from tabulate import tabulate
 from webike.util.activity import Cycle
@@ -136,8 +136,7 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False)
 
 def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
     logger.info(__("Processing #{}: {} {}", nr, detector.attr, series))
-    # cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
-    cycles, cycles_disc = [], []
+    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
     if not dry_run:
         logger.info(__("Writing {} + {} = {} cycles", len(cycles), len(cycles_disc),

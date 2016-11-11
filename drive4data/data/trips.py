@@ -9,7 +9,7 @@ from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, 
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
-from iss4e.util import BraceMessage as __
+from iss4e.util import BraceMessage as __, progress
 from iss4e.util import async_progress
 from tabulate import tabulate
 from webike.util.activity import Cycle
@@ -141,8 +141,7 @@ def preprocess_trips(client: InfluxDBClient, executor: Executor, dry_run=False):
 def preprocess_trip(client, nr, series, iter, queue, dry_run=False):
     logger.info(__("Processing #{}: {}", nr, series))
     detector = TripDetection(time_epoch=client.time_epoch)
-    # cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
-    cycles, cycles_disc = [], []
+    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
     if not dry_run:
         logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
