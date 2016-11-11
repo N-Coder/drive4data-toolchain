@@ -17,94 +17,97 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 
-class ChargeCycleDerivDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
-    MAX_DELAY = timedelta(hours=1) / timedelta(seconds=1)
-
+class ChargeCycleDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
     def __init__(self, **kwargs):
-        super().__init__(attr='soc_diff', max_merge_gap=timedelta(hours=2),
-                         min_cycle_duration=timedelta(minutes=10), **kwargs)
+        self.last_movement = 0
+        self.max_delay = kwargs.pop('max_delay', timedelta(hours=1) / timedelta(seconds=1))
+        kwargs.setdefault('max_merge_gap', timedelta(minutes=30))
+        kwargs.setdefault('min_cycle_duration', timedelta(minutes=10))
+        super().__init__(**kwargs)
+
+    def check_movement(self, sample):
+        has_movement = sample['veh_speed'] > 0
+        if has_movement:
+            self.last_movement = sample['time']
+        sample['last_movement'] = self.last_movement
+        return has_movement
+
+    def is_start(self, sample, previous):
+        return not self.check_movement(sample)
+
+    def is_end(self, sample, previous):
+        return self.check_movement(sample) or self.get_duration(previous, sample) > self.max_delay
+
+    def check_reject_reason(self, cycle: Cycle):
+        if (cycle.end['hvbatt_soc'] - cycle.start['hvbatt_soc']) < 10:
+            return "delta_soc<10%"
+        return super().check_reject_reason(cycle)
+
+    def can_merge(self, last_cycle, new_cycle: Cycle):
+        if super().can_merge(last_cycle, new_cycle):
+            soc_change = new_cycle.start['hvbatt_soc'] - last_cycle.end['hvbatt_soc']
+            if soc_change < -2:
+                return False
+            assert last_cycle.start['last_movement'] == last_cycle.end['last_movement']
+            assert new_cycle.start['last_movement'] == new_cycle.end['last_movement']
+            if new_cycle.start['last_movement'] > last_cycle.end['time']:
+                # vehicle moved between the cycles, don't merge
+                return False
+        else:
+            return False
+
+
+class ChargeCycleDerivDetection(ChargeCycleDetection):
+    def __init__(self, **kwargs):
+        kwargs.setdefault('max_merge_gap', timedelta(hours=2))
+        super().__init__(attr='soc_diff', **kwargs)
 
     def __call__(self, cycle_samples):
         cycle_samples = smooth(cycle_samples, 'hvbatt_soc', 'soc', alpha=0.95)
         cycle_samples = differentiate(cycle_samples, 'soc', attr_time='time',
                                       delta_time=TO_SECONDS['h'] / TO_SECONDS['n'])
+        # TODO dump data for debugging
         return super().__call__(cycle_samples)
 
     def is_start(self, sample, previous):
-        return sample[self.attr] > 5
+        # TODO threshold to high for #3,6,8 2015-09-21 08:04:53
+        return super().is_start(sample, previous) and sample[self.attr] > 5
 
     def is_end(self, sample, previous):
-        return sample[self.attr] < 5 or self.get_duration(previous, sample) > self.MAX_DELAY
-
-    def check_reject_reason(self, cycle: Cycle):
-        if (cycle.end['hvbatt_soc'] - cycle.start['hvbatt_soc']) < 10:
-            return "delta_soc<10%"
-        return super().check_reject_reason(cycle)
-
-    def can_merge(self, last_cycle, new_cycle: Cycle):
-        if super().can_merge(last_cycle, new_cycle):
-            soc_change = new_cycle.start['hvbatt_soc'] - last_cycle.end['hvbatt_soc']
-            if soc_change < -2:
-                return False
-        else:
-            return False
+        return super().is_end(sample, previous) or sample[self.attr] < 5
 
 
-class ChargeCycleAttrDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
-    MAX_DELAY = timedelta(hours=1) / timedelta(seconds=1)
-
-    def __init__(self, **kwargs):
-        super().__init__(max_merge_gap=timedelta(minutes=30),
-                         min_cycle_duration=timedelta(minutes=10), **kwargs)
-
-    def is_end(self, sample, previous):
-        return self.get_duration(previous, sample) > self.MAX_DELAY
-
-    def check_reject_reason(self, cycle: Cycle):
-        if (cycle.end['hvbatt_soc'] - cycle.start['hvbatt_soc']) < 10:
-            return "delta_soc<10%"
-        return super().check_reject_reason(cycle)
-
-    def can_merge(self, last_cycle, new_cycle: Cycle):
-        if super().can_merge(last_cycle, new_cycle):
-            soc_change = new_cycle.start['hvbatt_soc'] - last_cycle.end['hvbatt_soc']
-            if soc_change < -2:
-                return False
-        else:
-            return False
-
-
-class ChargeCycleACVoltageDetection(ChargeCycleAttrDetection):
+class ChargeCycleACVoltageDetection(ChargeCycleDetection):
     def __init__(self, **kwargs):
         super().__init__(attr='charger_acvoltage', **kwargs)
 
     def is_start(self, sample, previous):
-        return sample[self.attr] > 4
+        return super().is_start(sample, previous) and sample[self.attr] > 4
 
     def is_end(self, sample, previous):
-        return sample[self.attr] < 4 or super().is_end(sample, previous)
+        return super().is_end(sample, previous) or sample[self.attr] < 4
 
 
-class ChargeCycleIsChargingDetection(ChargeCycleAttrDetection):
+class ChargeCycleIsChargingDetection(ChargeCycleDetection):
     def __init__(self, **kwargs):
         super().__init__(attr='ischarging', **kwargs)
 
     def is_start(self, sample, previous):
-        return sample[self.attr] > 3
+        return super().is_start(sample, previous) and sample[self.attr] > 3
 
     def is_end(self, sample, previous):
-        return sample[self.attr] < 3 or super().is_end(sample, previous)
+        return super().is_end(sample, previous) or sample[self.attr] < 3
 
 
-class ChargeCycleACHVPowerDetection(ChargeCycleAttrDetection):
+class ChargeCycleACHVPowerDetection(ChargeCycleDetection):
     def __init__(self, **kwargs):
         super().__init__(attr='ac_hvpower', **kwargs)
 
     def is_start(self, sample, previous):
-        return sample[self.attr] > 0
+        return super().is_start(sample, previous) and sample[self.attr] > 0
 
     def is_end(self, sample, previous):
-        return sample[self.attr] <= 0 or super().is_end(sample, previous)
+        return super().is_end(sample, previous) or sample[self.attr] <= 0
 
 
 def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False):
@@ -119,7 +122,7 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False)
         ('ac_hvpower', 'ac_hvpower>0', ChargeCycleACHVPowerDetection(time_epoch=client.time_epoch)),
         ('hvbatt_soc', 'hvbatt_soc<200', ChargeCycleDerivDetection(time_epoch=client.time_epoch))
     ]:
-        fields = ["time", "participant", "hvbatt_soc"]
+        fields = ["time", "participant", "hvbatt_soc", "veh_speed"]
         if attr not in fields:
             fields.append(attr)
         res = client.stream_series("samples", fields=fields, where=where, batch_size=500000)
