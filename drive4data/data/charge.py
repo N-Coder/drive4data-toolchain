@@ -1,6 +1,7 @@
 import csv
 import logging
 import multiprocessing
+import string
 from concurrent.futures import Executor
 from datetime import timedelta
 
@@ -36,6 +37,8 @@ class ChargeCycleDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
         return not self.check_movement(sample)
 
     def is_end(self, sample, previous):
+        # we could also detect the end of charging when the SoC doesn't increase for a long time,
+        # but that would be a lot of work and is not required right now
         return self.check_movement(sample) or self.get_duration(previous, sample) > self.max_delay
 
     def check_reject_reason(self, cycle: Cycle):
@@ -63,10 +66,9 @@ class ChargeCycleDerivDetection(ChargeCycleDetection):
         super().__init__(attr='soc_diff', **kwargs)
 
     def __call__(self, cycle_samples):
-        cycle_samples = smooth(cycle_samples, 'hvbatt_soc', 'soc', alpha=0.95)
-        cycle_samples = differentiate(cycle_samples, 'soc', attr_time='time',
+        cycle_samples = smooth(cycle_samples, 'hvbatt_soc', 'soc_smooth', alpha=0.95)
+        cycle_samples = differentiate(cycle_samples, 'soc_smooth', 'soc_diff', attr_time='time',
                                       delta_time=TO_SECONDS['h'] / TO_SECONDS['n'])
-        # TODO dump data for debugging
         return super().__call__(cycle_samples)
 
     def is_start(self, sample, previous):
@@ -139,6 +141,11 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False)
 
 def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
     logger.info(__("Processing #{}: {} {}", nr, detector.attr, series))
+    if detector.attr == 'soc_diff':
+        iter = dump_after_yield(
+            iter,
+            "out/charge_values_{}.csv".format("".join(c for c in series if c in string.digits)),
+            ["time", "participant", "hvbatt_soc", "soc_smooth", "soc_diff", "veh_speed", "last_movement"])
     cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
 
     if not dry_run:
@@ -156,3 +163,14 @@ def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
 
     logger.info(__("Task #{}: {} {} completed", nr, detector.attr, series))
     return detector.attr, nr, len(cycles), len(cycles_disc)
+
+
+def dump_after_yield(iterable, dump_file, fieldnames):
+    with open(dump_file, 'w+') as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for value in iterable:
+            try:
+                yield value
+            finally:
+                w.writerow(value)
