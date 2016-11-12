@@ -39,7 +39,7 @@ class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityD
             ValueMemory('outside_air_temp', save_last='temp_last')]
         super().__init__(attr='veh_speed',
                          min_sample_count=60, min_cycle_duration=timedelta(minutes=1),
-                         max_merge_gap=timedelta(minutes=10),
+                         max_merge_gap=timedelta(minutes=4, seconds=20),
                          memorized_values=memorized_values, **kwargs)
 
     def is_start(self, sample, previous):
