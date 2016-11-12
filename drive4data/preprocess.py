@@ -24,7 +24,7 @@ def main():
         executor = concurrent.futures.ProcessPoolExecutor(max_workers=8)
         stack.enter_context(executor)
 
-        client = InfluxDBClient(batched=False, time_epoch=TIME_EPOCH, **cred)
+        client = InfluxDBClient(batched=False, async_executor=True, time_epoch=TIME_EPOCH, **cred)
         stack.enter_context(closing(client))
 
         if not dry_run:

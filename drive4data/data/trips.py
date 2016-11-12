@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
-from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, join_selectors
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __, progress
 from iss4e.util import async_progress
@@ -120,16 +120,11 @@ class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityD
 
 def preprocess_trips(client: InfluxDBClient, executor: Executor, dry_run=False):
     logger.info("Preprocessing trips")
-    res = client.stream_series(
-        "samples",
-        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
-               "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
-        batch_size=500000,
-        where="veh_speed > 0")
     manager = multiprocessing.Manager()
     queue = manager.Queue()
-    futures = [executor.submit(preprocess_trip, client, nr, series, iter, queue, dry_run)
-               for nr, (series, iter) in enumerate(res)]
+    series = client.list_series("samples")
+    futures = [executor.submit(preprocess_trip, nr, client, queue, sname, sselector, dry_run)
+               for nr, (sname, sselector) in enumerate(series)]
     logger.debug("Tasks started, waiting for results...")
     async_progress(futures, queue)
     data = [f.result() for f in futures]
@@ -138,10 +133,17 @@ def preprocess_trips(client: InfluxDBClient, executor: Executor, dry_run=False):
     logger.info(__("Detected trips:\n{}", tabulate(data, headers=["#", "cycles", "cycles_disc"])))
 
 
-def preprocess_trip(client, nr, series, iter, queue, dry_run=False):
-    logger.info(__("Processing #{}: {}", nr, series))
+def preprocess_trip(nr, client, queue, sname, sselector, dry_run=False):
+    logger.info(__("Processing #{}: {}", nr, sname))
     detector = TripDetection(time_epoch=client.time_epoch)
-    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    stream = client.stream_params(
+        "samples",
+        fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
+               "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
+        where=join_selectors([sselector, "veh_speed > 0"])
+    )
+    stream = progress(stream, delay=4, remote=queue.put)
+    cycles, cycles_disc = detector(stream)
 
     if not dry_run:
         logger.info(__("Writing {} + {} = {} trips", len(cycles), len(cycles_disc),
@@ -156,5 +158,5 @@ def preprocess_trip(client, nr, series, iter, queue, dry_run=False):
                 writer = csv.writer(csvfile)
                 writer.writerows(hist)
 
-    logger.info(__("Task #{}: {} completed", nr, series))
+    logger.info(__("Task #{}: {} completed", nr, sname))
     return nr, len(cycles), len(cycles_disc)

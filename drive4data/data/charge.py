@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
-from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, join_selectors
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __, async_progress, progress
 from iss4e.util.math import differentiate, smooth
@@ -114,7 +114,6 @@ class ChargeCycleACHVPowerDetection(ChargeCycleDetection):
 
 def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False):
     logger.info("Preprocessing charge cycles")
-
     manager = multiprocessing.Manager()
     queue = manager.Queue()
     futures = []
@@ -127,9 +126,11 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False)
         fields = ["time", "participant", "hvbatt_soc", "veh_speed"]
         if attr not in fields:
             fields.append(attr)
-        res = client.stream_series("samples", fields=fields, where=where, batch_size=500000)
-        futures += [executor.submit(preprocess_cycle, client, nr, series, detector, iter, queue, dry_run)
-                    for nr, (series, iter) in enumerate(res)]
+        series = client.list_series("samples")
+        futures += [executor.submit(preprocess_cycle,
+                                    nr, client, queue, sname, join_selectors([sselector, where]),
+                                    fields, detector, dry_run)
+                    for nr, (sname, sselector) in enumerate(series)]
 
     logger.debug("Tasks started, waiting for results...")
     async_progress(futures, queue)
@@ -139,14 +140,16 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False)
     logger.info(__("Detected charge cycles:\n{}", tabulate(data, headers=["attr", "#", "cycles", "cycles_disc"])))
 
 
-def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
-    logger.info(__("Processing #{}: {} {}", nr, detector.attr, series))
+def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_run=False):
+    logger.info(__("Processing #{}: {} {}", nr, detector.attr, sname))
+    stream = client.stream_params("samples", fields=fields, where=selector)
     if detector.attr == 'soc_diff':
-        iter = dump_after_yield(
-            iter,
-            "out/charge_values_{}.csv".format("".join(c for c in series if c in string.digits)),
+        stream = dump_after_yield(
+            stream,
+            "out/charge_values_{}.csv".format("".join(c for c in sname if c in string.digits)),
             ["time", "participant", "hvbatt_soc", "soc_smooth", "soc_diff", "veh_speed", "last_movement"])
-    cycles, cycles_disc = detector(progress(iter, delay=4, remote=queue.put))
+    stream = progress(stream, delay=4, remote=queue.put)
+    cycles, cycles_disc = detector(stream)
 
     if not dry_run:
         logger.info(__("Writing {} + {} = {} cycles", len(cycles), len(cycles_disc),
@@ -161,7 +164,7 @@ def preprocess_cycle(client, nr, series, detector, iter, queue, dry_run):
                 writer = csv.writer(csvfile)
                 writer.writerows(hist)
 
-    logger.info(__("Task #{}: {} {} completed", nr, detector.attr, series))
+    logger.info(__("Task #{}: {} {} completed", nr, detector.attr, sname))
     return detector.attr, nr, len(cycles), len(cycles_disc)
 
 
