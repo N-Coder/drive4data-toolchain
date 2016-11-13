@@ -140,7 +140,7 @@ def preprocess_trip(nr, client, queue, sname, sselector, dry_run=False):
         "samples",
         fields="time, veh_speed, participant, veh_odometer, hvbatt_soc, outside_air_temp, "
                "fuel_rate, hvbatt_current, hvbatt_voltage, hvbs_cors_crnt, hvbs_fn_crnt",
-        where=join_selectors([sselector, "veh_speed > 0"])
+        where=join_selectors([sselector, "veh_speed > 0"]), group_order_by="ORDER BY time ASC"
     )
     stream = progress(stream, delay=4, remote=queue.put)
     cycles, cycles_disc = detector(stream)
