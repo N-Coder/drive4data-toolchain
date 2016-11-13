@@ -175,12 +175,12 @@ def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_r
             client.write_points(
                 ({
                      'measurement': 'charge_debug',
-                     'time': row['time'],
+                     'time': int(row['time']),
                      'tags': {
                          'participant': row['participant']
                      },
                      'fields': {
-                         k: v for k, v in row.items() if k not in ['time', 'participant']
+                         k: float(v) for k, v in row.items() if k not in ['time', 'participant']
                          }
                  } for row in csv.DictReader(f)),
                 batch_size=10000
