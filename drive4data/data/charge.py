@@ -180,7 +180,7 @@ def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_r
                          'participant': row['participant']
                      },
                      'fields': {
-                         k: float(v) for k, v in row.items() if k not in ['time', 'participant']
+                         k: float(v) for k, v in row.items() if k not in ['time', 'participant'] and v is not None
                          }
                  } for row in csv.DictReader(f)),
                 batch_size=10000
