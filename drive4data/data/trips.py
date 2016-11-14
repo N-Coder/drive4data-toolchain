@@ -1,9 +1,9 @@
 import csv
 import logging
 import math
-import multiprocessing
 from concurrent.futures import Executor
 from datetime import timedelta
+from multiprocessing.managers import SyncManager
 
 from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
@@ -118,9 +118,8 @@ class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityD
             yield event
 
 
-def preprocess_trips(client: InfluxDBClient, executor: Executor, dry_run=False):
+def preprocess_trips(client: InfluxDBClient, executor: Executor, manager: SyncManager, dry_run=False):
     logger.info("Preprocessing trips")
-    manager = multiprocessing.Manager()
     queue = manager.Queue()
     series = client.list_series("samples")
     futures = [executor.submit(preprocess_trip, nr, client, queue, sname, sselector, dry_run)

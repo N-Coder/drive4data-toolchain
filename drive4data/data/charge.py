@@ -1,9 +1,9 @@
 import csv
 import logging
-import multiprocessing
 import string
 from concurrent.futures import Executor
 from datetime import timedelta
+from multiprocessing.managers import SyncManager
 
 from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
 from drive4data.data.soc import SoCMixin
@@ -115,9 +115,8 @@ class ChargeCycleACHVPowerDetection(ChargeCycleDetection):
         return super().is_end(sample, previous) or sample[self.attr] <= 0
 
 
-def preprocess_cycles(client: InfluxDBClient, executor: Executor, dry_run=False):
+def preprocess_cycles(client: InfluxDBClient, executor: Executor, manager: SyncManager, dry_run=False):
     logger.info("Preprocessing charge cycles")
-    manager = multiprocessing.Manager()
     queue = manager.Queue()
     series = client.list_series("samples")
     futures = []
@@ -149,7 +148,7 @@ def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_r
 
     csv_file = None
     if detector.attr == 'soc_diff':
-        csv_file = "out/charge_values_{}.csv".format("".join(c for c in sname if c in string.digits))
+        csv_file = "out/charge_values_{}.csv".format("".join(c for n in sname for c in n if c in string.digits))
         stream = dump_after_yield(
             stream, csv_file,
             ["time", "participant", "hvbatt_soc", "soc_smooth", "soc_diff", "veh_speed", "last_movement"])
@@ -180,7 +179,7 @@ def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_r
                          'participant': row['participant']
                      },
                      'fields': {
-                         k: float(v) for k, v in row.items() if k not in ['time', 'participant'] and v is not None
+                         k: float(v) for k, v in row.items() if k not in ['time', 'participant'] and (v or v == 0)
                          }
                  } for row in csv.DictReader(f)),
                 batch_size=10000
