@@ -1,11 +1,9 @@
-import csv
 import logging
-import string
 from concurrent.futures import Executor
 from datetime import timedelta
 from multiprocessing.managers import SyncManager
 
-from drive4data.data.activity import InfluxActivityDetection, MergeDebugMixin
+from drive4data.data.activity import InfluxActivityDetection
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, join_selectors
 from iss4e.db.influxdb import TO_SECONDS
@@ -18,7 +16,7 @@ __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
 
 
-class ChargeCycleDetection(SoCMixin, MergeDebugMixin, InfluxActivityDetection):
+class ChargeCycleDetection(SoCMixin, InfluxActivityDetection):
     def __init__(self, **kwargs):
         self.last_movement = 0
         self.max_delay = kwargs.pop('max_delay', timedelta(hours=1) / timedelta(seconds=1))
@@ -75,7 +73,6 @@ class ChargeCycleDerivDetection(ChargeCycleDetection):
         return super().__call__(cycle_samples)
 
     def is_start(self, sample, previous):
-        # TODO threshold too high for #3,6,8 2015-09-21 08:04:53
         return super().is_start(sample, previous) and sample[self.attr] > 5
 
     def is_end(self, sample, previous):
@@ -145,14 +142,6 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, manager: SyncM
 def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_run=False):
     logger.info(__("Processing #{}: {} {}", nr, detector.attr, sname))
     stream = client.stream_params("samples", fields=fields, where=selector, group_order_by="ORDER BY time ASC")
-
-    csv_file = None
-    if detector.attr == 'soc_diff':
-        csv_file = "out/charge_values_{}.csv".format("".join(c for n in sname for c in n if c in string.digits))
-        stream = dump_after_yield(
-            stream, csv_file,
-            ["time", "participant", "hvbatt_soc", "soc_smooth", "soc_diff", "veh_speed", "last_movement"])
-
     stream = progress(stream, delay=4, remote=queue.put)
     cycles, cycles_disc = detector(stream)
 
@@ -164,37 +153,5 @@ def preprocess_cycle(nr, client, queue, sname, selector, fields, detector, dry_r
             tags={'detector': detector.attr},
             time_precision=client.time_epoch)
 
-    for name, hist in [('merges', detector.merges)]:
-        with open('out/hist_charge_{}_{}_{}.csv'.format(name, detector.attr, nr), 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerows(hist)
-
-    if csv_file:
-        with open(csv_file, "rt") as f:
-            client.write_points(
-                ({
-                     'measurement': 'charge_debug',
-                     'time': int(row['time']),
-                     'tags': {
-                         'participant': row['participant']
-                     },
-                     'fields': {
-                         k: float(v) for k, v in row.items() if k not in ['time', 'participant'] and (v or v == 0)
-                         }
-                 } for row in csv.DictReader(f)),
-                batch_size=10000
-            )
-
     logger.info(__("Task #{}: {} {} completed", nr, detector.attr, sname))
     return detector.attr, nr, len(cycles), len(cycles_disc)
-
-
-def dump_after_yield(iterable, dump_file, fieldnames):
-    with open(dump_file, 'w+') as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for value in iterable:
-            try:
-                yield value
-            finally:
-                w.writerow(value)

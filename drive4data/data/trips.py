@@ -1,11 +1,10 @@
-import csv
 import logging
 import math
 from concurrent.futures import Executor
 from datetime import timedelta
 from multiprocessing.managers import SyncManager
 
-from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory, MergeDebugMixin
+from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
 from drive4data.data.soc import SoCMixin
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, join_selectors
 from iss4e.db.influxdb import TO_SECONDS
@@ -29,7 +28,7 @@ def get_current(sample):
     return current
 
 
-class TripDetection(MergeDebugMixin, ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
+class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
     MIN_DURATION = timedelta(minutes=10) / timedelta(seconds=1)
 
     def __init__(self, **kwargs):
@@ -151,11 +150,6 @@ def preprocess_trip(nr, client, queue, sname, sselector, dry_run=False):
             detector.cycles_to_timeseries(cycles + cycles_disc, "trips"),
             tags={'detector': detector.attr},
             time_precision=client.time_epoch)
-
-        for name, hist in [('merges', detector.merges)]:
-            with open('out/hist_trip_{}_{}.csv'.format(name, nr), 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerows(hist)
 
     logger.info(__("Task #{}: {} completed", nr, sname))
     return nr, len(cycles), len(cycles_disc)
