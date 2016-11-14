@@ -20,7 +20,7 @@ def extract_hist(client: InfluxDBClient):
     logger.info("Generating charge cycle histogram data")
     hist_data = copy.deepcopy(webike.data.ChargeCycle.HIST_DATA)
     res = client.stream_measurement("charge_cycles", where="discarded = 'False' AND started = True")
-    for nr, (series, iter) in enumerate(res):
+    for nr, (tags, series, iter) in enumerate(res):
         logger.info(__("#{}: {}", nr, series))
 
         for cycle in progress(iter):

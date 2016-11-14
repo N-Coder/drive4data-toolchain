@@ -19,7 +19,7 @@ def extract_hist(client: InfluxDBClient):
     logger.info("Generating trip histogram data")
     hist_data = copy.deepcopy(webike.data.Trips.HIST_DATA)
     res = client.stream_measurement("trips", where="discarded = 'False' AND started = True")
-    for nr, (series, iter) in enumerate(res):
+    for nr, (tags, series, iter) in enumerate(res):
         logger.info(__("#{}: {}", nr, series))
 
         for trip in progress(iter):
