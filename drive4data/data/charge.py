@@ -52,6 +52,7 @@ class ChargeCycleDetection(SoCMixin, InfluxActivityDetection):
                 return False
             assert last_cycle.start['last_movement'] == last_cycle.end['last_movement']
             assert new_cycle.start['last_movement'] == new_cycle.end['last_movement']
+            # TODO invalid merge at participant 5#2015-09-16
             if new_cycle.start['last_movement'] > last_cycle.end['time']:
                 # vehicle moved between the cycles, don't merge
                 return False
@@ -59,6 +60,11 @@ class ChargeCycleDetection(SoCMixin, InfluxActivityDetection):
             return True
         else:
             return False
+
+    def cycle_to_events(self, cycle: Cycle, measurement=""):
+        for cycle, event in zip([cycle.start, cycle.end], super().cycle_to_events(cycle, measurement)):
+            event['fields']['last_movement'] = cycle['last_movement']
+            yield event
 
 
 class ChargeCycleDerivDetection(ChargeCycleDetection):
@@ -117,6 +123,7 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, manager: SyncM
     queue = manager.Queue()
     series = client.list_series("samples")
     futures = []
+    # TODO merge results of different detectors
     for attr, where, detector in [
         ('charger_acvoltage', 'charger_acvoltage>0', ChargeCycleACVoltageDetection(time_epoch=client.time_epoch)),
         ('ischarging', 'ischarging>0', ChargeCycleIsChargingDetection(time_epoch=client.time_epoch)),
