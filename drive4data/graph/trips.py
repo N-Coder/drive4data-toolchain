@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 
 import webike
+from drive4data.data.soc import rescale_soc
 from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient
 from iss4e.db.influxdb import TO_SECONDS
 from iss4e.util import BraceMessage as __
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 def extract_hist(client: InfluxDBClient):
     logger.info("Generating trip histogram data")
     hist_data = copy.deepcopy(webike.data.Trips.HIST_DATA)
-    res = client.stream_measurement("trips", where="discarded = 'False' AND started = 'True'")
+    res = client.stream_measurement("trips", where="discarded = 'False' AND started = True")
     for nr, (series, iter) in enumerate(res):
         logger.info(__("#{}: {}", nr, series))
 
@@ -26,13 +27,15 @@ def extract_hist(client: InfluxDBClient):
             hist_data['start_times'].append(to_hour_bin(trip_time))
             hist_data['start_weekday'].append(trip_time.weekday())
             hist_data['start_month'].append(trip_time.month)
-            hist_data['durations'].append(round(trip['duration'] * TO_SECONDS['n'] / 60))
+            hist_data['durations'].append(round(trip['duration'] * TO_SECONDS['n'] / TO_SECONDS['m']))
 
-            hist_trip_mappings = \
-                [('distances', 'est_distance'), ('trip_temp', 'temp_avg'), ('initial_soc', 'soc_start'),
-                 ('final_soc', 'soc_end')]
-            for hist_key, trip_key in hist_trip_mappings:
-                if trip_key in trip and trip[trip_key] is not None:
-                    hist_data[hist_key].append(trip[trip_key])
+            if trip.get('est_distance'):
+                hist_data['distances'].append(trip['est_distance'])
+            if trip.get('temp_avg'):
+                hist_data['trip_temp'].append(trip['temp_avg'])
+            if trip.get('soc_start'):
+                hist_data['initial_soc'].append(rescale_soc(trip_time, trip['participant'], trip['soc_start']))
+            if trip.get('soc_end'):
+                hist_data['final_soc'].append(rescale_soc(trip_time, trip['participant'], trip['soc_end']))
 
     return hist_data
