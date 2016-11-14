@@ -34,8 +34,10 @@ def main():
         webike.data.Trips.plot_trips(trip_hist_data)
 
         # TODO also do per participant
-        cycle_hist_data = charge.extract_hist(client)
+        cycle_hist_data_participant, cycle_hist_data = charge.extract_hist(client)
         webike.data.ChargeCycle.plot_charge_cycles(cycle_hist_data)
+        for k, v in cycle_hist_data_participant.items():
+            webike.data.ChargeCycle.plot_charge_cycles(v, suffix="_" + k)
 
 
 if __name__ == "__main__":
