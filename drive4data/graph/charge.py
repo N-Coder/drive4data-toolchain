@@ -41,6 +41,7 @@ def extract_hist(client: InfluxDBClient):
             hist_data['initial_soc'].append(rescale_soc(trip_time, cycle['participant'], cycle['soc_start']))
             hist_data['final_soc'].append(rescale_soc(trip_time, cycle['participant'], cycle['soc_end']))
 
-    hist_data_summary = {k: list(itertools.chain.from_iterable(p[k] for p in hist_data_particip.values()))
+    hist_data_summary = {k: list(itertools.chain.from_iterable(h[k] for p, h in hist_data_particip.items()
+                                                               if not str(p).endswith('3')))
                          for k in webike.data.ChargeCycle.HIST_DATA.keys()}
     return hist_data_particip, hist_data_summary
