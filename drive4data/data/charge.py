@@ -52,7 +52,6 @@ class ChargeCycleDetection(SoCMixin, InfluxActivityDetection):
                 return False
             assert last_cycle.start['last_movement'] == last_cycle.end['last_movement']
             assert new_cycle.start['last_movement'] == new_cycle.end['last_movement']
-            # TODO invalid merge at participant 5#2015-09-16
             if new_cycle.start['last_movement'] > last_cycle.end['time']:
                 # vehicle moved between the cycles, don't merge
                 return False
@@ -125,9 +124,12 @@ def preprocess_cycles(client: InfluxDBClient, executor: Executor, manager: SyncM
     futures = []
     # TODO merge results of different detectors
     for attr, where, detector in [
-        ('charger_acvoltage', 'charger_acvoltage>0', ChargeCycleACVoltageDetection(time_epoch=client.time_epoch)),
-        ('ischarging', 'ischarging>0', ChargeCycleIsChargingDetection(time_epoch=client.time_epoch)),
-        ('ac_hvpower', 'ac_hvpower>0', ChargeCycleACHVPowerDetection(time_epoch=client.time_epoch)),
+        ('charger_acvoltage', 'charger_acvoltage>0 OR veh_speed > 0',
+         ChargeCycleACVoltageDetection(time_epoch=client.time_epoch)),
+        ('ischarging', 'ischarging>0 OR veh_speed > 0',
+         ChargeCycleIsChargingDetection(time_epoch=client.time_epoch)),
+        ('ac_hvpower', 'ac_hvpower>0 OR veh_speed > 0',
+         ChargeCycleACHVPowerDetection(time_epoch=client.time_epoch)),
         ('hvbatt_soc', 'hvbatt_soc<200', ChargeCycleDerivDetection(time_epoch=client.time_epoch))
     ]:
         fields = ["time", "participant", "hvbatt_soc", "veh_speed"]
