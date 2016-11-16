@@ -50,6 +50,9 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
     def accumulate_samples(self, new_sample, accumulator):
         accumulator = super().accumulate_samples(new_sample, accumulator)
 
+        if '__first' not in accumulator:
+            accumulator['__first'] = new_sample
+
         # accumulated values depending on previous sample
         if 'est_distance' not in accumulator:
             accumulator['est_distance'] = 0.0
@@ -64,7 +67,10 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
         self.make_avg(accumulator, 'avg_current', get_current(new_sample))
         self.make_avg(accumulator, 'avg_voltage', new_sample.get('hvbatt_voltage'))
         self.make_avg(accumulator, 'avg_fuel_rate', new_sample.get('fuel_rate'))
-        self.make_avg(accumulator, 'temp_avg', new_sample.get('outside_air_temp'))
+
+        # only count temperature 5 mins after trip start
+        if self.get_duration(accumulator['__first'], new_sample) >= 5 * TO_SECONDS['m']:
+            self.make_avg(accumulator, 'temp_avg', new_sample.get('outside_air_temp'))
 
         accumulator['__prev'] = new_sample
         return accumulator
