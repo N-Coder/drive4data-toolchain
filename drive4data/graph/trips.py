@@ -31,7 +31,7 @@ def extract_hist(client: InfluxDBClient):
 
             if trip.get('est_distance'):
                 hist_data['distances'].append(trip['est_distance'])
-            if trip.get('temp_avg'):
+            if trip.get('temp_avg') and trip.get('temp_avg') < 200:
                 hist_data['trip_temp'].append(trip['temp_avg'])
             if trip.get('soc_start'):
                 hist_data['initial_soc'].append(rescale_soc(trip_time, trip['participant'], trip['soc_start']))

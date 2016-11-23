@@ -70,6 +70,7 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
 
         # only count temperature 5 mins after trip start
         if self.get_duration(accumulator['__first'], new_sample) >= 5 * TO_SECONDS['m']:
+            # TODO and new_sample.get('outside_air_temp') < 1e305
             self.make_avg(accumulator, 'temp_avg', new_sample.get('outside_air_temp'))
 
         accumulator['__prev'] = new_sample
