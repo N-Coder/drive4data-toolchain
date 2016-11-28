@@ -4,12 +4,11 @@ import os
 import sys
 import warnings
 
+from drive4data.initialization import post_import
+from drive4data.initialization import pre_import
+from drive4data.initialization.importer import SamplesImporter, SummaryImporter
 from iss4e.util import BraceMessage as __
 from iss4e.util.config import load_config
-
-from initialization import post_import
-from initialization import pre_import
-from initialization.importer import SamplesImporter, SummaryImporter
 
 __author__ = "Niko Fink"
 logger = logging.getLogger(__name__)
