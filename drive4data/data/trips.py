@@ -4,13 +4,12 @@ from concurrent.futures import Executor
 from datetime import timedelta
 from multiprocessing.managers import SyncManager
 
-from drive4data.data.activity import InfluxActivityDetection, ValueMemoryMixin, ValueMemory
-from drive4data.data.soc import SoCMixin
-from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, join_selectors
-from iss4e.db.influxdb import TO_SECONDS
-from iss4e.util import BraceMessage as __, progress
-from iss4e.util import async_progress
 from tabulate import tabulate
+
+from drive4data.data.activity import InfluxActivityDetection, ValueMemory, ValueMemoryMixin
+from drive4data.data.soc import SoCMixin
+from iss4e.db.influxdb import InfluxDBStreamingClient as InfluxDBClient, TO_SECONDS, join_selectors
+from iss4e.util import BraceMessage as __, async_progress, progress
 from webike.util.activity import Cycle
 
 __author__ = "Niko Fink"
@@ -70,6 +69,7 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
 
         # only count temperature 5 mins after trip start
         if self.get_duration(accumulator['__first'], new_sample) >= 5 * TO_SECONDS['m'] \
+                and new_sample.get('outside_air_temp') is not None \
                 and new_sample.get('outside_air_temp') < 1e305:
             self.make_avg(accumulator, 'temp_avg', new_sample.get('outside_air_temp'))
 
