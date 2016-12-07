@@ -2,6 +2,7 @@ import warnings
 from datetime import datetime
 
 import numpy as np
+
 from drive4data.data.activity import ValueMemory
 from webike.util.activity import Cycle
 
@@ -29,6 +30,8 @@ LINEAR_FACTORS = {
 
 
 def rescale_soc(time, participant, soc_value):
+    if participant is '3':
+        warnings.warn("Using SoC of participant 3 with invalid rescaling.")
     for end, poly in LINEAR_FACTORS[participant]:
         if not end or end >= time:
             soc_value = poly(soc_value)
