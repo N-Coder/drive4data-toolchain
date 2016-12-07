@@ -78,8 +78,9 @@ class TripDetection(ValueMemoryMixin, SoCMixin, InfluxActivityDetection):
 
     def make_avg(self, accumulator, name, value):
         if value is not None and math.isfinite(value):
-            cnt = accumulator.get('cnt', 1)  # the new sample is already counted
+            cnt = accumulator.get(name + '_cnt', 0) + 1
             accumulator[name] = float(value + (cnt - 1) * accumulator.get(name, 0)) / cnt
+            accumulator[name + '_cnt'] = cnt
 
     def store_cycle(self, cycle: Cycle):
         duration = (cycle.end['time'] - cycle.start['time']) * TO_SECONDS[self.epoch]
